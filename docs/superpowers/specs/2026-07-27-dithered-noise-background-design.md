@@ -82,10 +82,22 @@ components/dither-background/
                           uniform cache, DPR/resize, RAF loop, pointer easing.
                           Zero React imports.
   shader.ts               GLSL vertex + fragment source
-  config.ts               DitherConfig type, DEFAULT_CONFIG, hex→vec3
+  bayer.ts                recursive Bayer (ordered dither) matrix generation
+  config.ts               DitherConfig type, DEFAULT_CONFIG, hex→vec3,
+                          resolveConfig, palette resampling
   palettes.ts             named palettes
+  viewport.ts             DPR/resize math, pointer normalization, easing —
+                          zero React imports
+  animation-gate.ts       pure visible/hidden/reduced-motion/paused ->
+                          should-animate gate — zero React imports
   dither-background.tsx   thin React shell — canvas ref, lifecycle,
                           config → uniforms
+  index.ts                public entry point; re-exports the React component
+                          plus the engine surface
+  engine.ts               React-free entry point — re-exports only the
+                          modules above with zero React imports, so the
+                          engine is importable from a non-React project
+                          without dragging React into its module graph
 ```
 
 `renderer.ts` knows nothing about React. That seam is what makes the component
@@ -102,7 +114,15 @@ remount the canvas — retuning a slider must not restart the animation.
 
 Seven stages:
 
-1. **Aspect-corrected UV** so the field does not stretch on resize.
+1. **Per-cell field snap, then aspect-corrected UV.** `gl_FragCoord` is snapped
+   to the center of its `uCellSize` halftone cell — `(floor(fragCoord / cellSize)
+   + 0.5) * cellSize` — *before* anything else touches it, so every term
+   downstream (the noise field and the Bayer threshold alike) is evaluated once
+   per cell rather than once per pixel. That is what makes every cell a single
+   flat dot, the way real halftone print works; sampling per pixel instead would
+   let the band comparison flip inside a cell, producing sub-cell detail with
+   smooth edges instead of dots. UV is then aspect-corrected from that snapped
+   coordinate so the field does not stretch on resize.
 2. **3D simplex noise** (Ashima/Gustavson `snoise`) with **time on the z axis**.
    Scrolling a 2D field reads as sliding wallpaper; drifting through z reads as
    clouds forming and dissolving. This is the difference between "moving" and
@@ -113,14 +133,22 @@ Seven stages:
    contours rather than round blobs. The eased pointer vector is injected into
    the **second** warp offset, so the fold pattern bends near the cursor instead
    of the whole image translating.
-5. **Contrast remap** — smoothstep into a fuller range. The reference has
-   confident islands of pure light and pure dark; without this the bands land in
-   a narrow middle and read washed out.
+5. **Field-gain expansion, contrast remap, tone-headroom inset.** fbm's output is
+   statistically far narrower than its nominal -1..1 range (RMS ≈ 0.11 at 4
+   octaves / gain 0.5), so a constant `FIELD_GAIN` (1.05) expands it first —
+   without this the field crowds into a narrow band around 0.5 and the palette
+   bands never separate. `smoothstep(contrastLow, contrastHigh, …)` then remaps
+   into confident islands of pure light and dark; without it the bands land in a
+   narrow middle and read washed out. Because `smoothstep` saturates to exact
+   0.0/1.0, a final `TONE_HEADROOM` (0.07) inset keeps a minimum dot density in
+   the lightest and darkest regions instead of letting them go perfectly flat —
+   real halftone print's lightest areas are paper plus sparse ink, never pure
+   paper.
 6. **Fused ordered dither + palette quantization.** These are one operation, not
    two sequential ones:
 
    ```glsl
-   float v = value * float(PALETTE_SIZE - 1);
+   float v = value * float(MAX_PALETTE_STOPS - 1);
    int   i = int(floor(v));
    float f = fract(v);
    vec3 color = f < bayer8(gl_FragCoord.xy / cellSize)
@@ -138,10 +166,11 @@ Seven stages:
    space makes the dots swim with the noise and it immediately looks like a video
    filter rather than print.
 
-Plus a low-amplitude grain pass, which sells the risograph feel and suppresses
+Plus a low-amplitude grain pass, sampled per cell (not per pixel, or it would
+speckle the inside of every dot), which sells the risograph feel and suppresses
 banding in flat regions.
 
-Default `cellSize`: 4 device px, per the measured pitch above.
+Default `cellSize`: 8 device px, per the measured pitch above.
 
 ## Playground and controls
 
@@ -151,10 +180,12 @@ field is verifiable at a glance.
 
 A collapsible control panel, hidden by default and toggled with a keypress,
 exposes: warp strength, noise scale, animation speed, band count (= number of
-active palette stops, 2–6; stops beyond the count are ignored), cell size,
-dither strength (how far the Bayer threshold deviates from 0.5 — at 0 the
-quantization is a hard posterize with no dot texture), grain amount, contrast,
-and palette swatches. A "copy config"
+active palette stops rendered, 2–6 — the ramp is *resampled* across the whole
+palette with both endpoints always pinned, so lowering the count coarsens the
+gradient rather than truncating its dark end; see `resampleIndices` in
+`config.ts`), cell size, dither strength (how far the Bayer threshold deviates
+from 0.5 — at 0 the quantization is a hard posterize with no dot texture),
+grain amount, contrast, and palette swatches. A "copy config"
 button emits the current values as a props object, so a tuned look can be frozen
 into `DEFAULT_CONFIG`.
 
@@ -175,12 +206,27 @@ This is a background. It must never be the reason a page janks.
 
 ## Testing
 
-Unit tests (vitest) cover the pure TypeScript only:
+Unit tests (vitest) cover the pure TypeScript, the generated shader source, the
+renderer lifecycle against a fake GL layer, and the portability contract:
 
 - config merge and clamping of out-of-range values
 - hex → vec3 conversion
 - Bayer matrix generation
-- palette validation (stop count matches shader `PALETTE_SIZE`)
+- palette validation (stop count matches the shader's `MAX_PALETTE_STOPS`)
+- generated fragment/vertex shader source — uniform declarations, the embedded
+  Bayer literal, `gl_FragCoord`-based sampling, the `FIELD_GAIN` and pointer
+  falloff terms
+- the animation gate (`shouldAnimate`) across every combination of
+  visible/hidden/reduced-motion/paused
+- viewport math — DPR capping, drawing-buffer sizing (including non-finite
+  input), pointer normalization, easing
+- the renderer lifecycle — compile/link/VAO failure, `webglcontextlost` /
+  `webglcontextrestored`, resize, `setConfig` (including a rejected invalid
+  update), `destroy` — driven against a hand-written fake WebGL2 context, no
+  real browser or GPU involved
+- engine portability — every engine file imports no React and no Next.js, so
+  the "liftable into a non-React project" claim in the Architecture section
+  above stays true rather than silently rotting
 
 **There is no meaningful automated assertion for "does this look like the
 reference."** Visual correctness is verified by rendering in a browser and
