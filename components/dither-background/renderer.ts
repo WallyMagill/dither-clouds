@@ -134,8 +134,15 @@ export function createRenderer(
     const nextProgram = linkProgram(gl, VERTEX_SHADER, buildFragmentShader())
     if (!nextProgram) return false
 
+    const nextVao = gl.createVertexArray()
+    if (!nextVao) {
+      if (isDev) console.error('[dither-background] failed to create VAO')
+      gl.deleteProgram(nextProgram)
+      return false
+    }
+
     program = nextProgram
-    vao = gl.createVertexArray()
+    vao = nextVao
 
     locations.clear()
     for (const name of UNIFORM_NAMES) {
@@ -217,8 +224,15 @@ export function createRenderer(
 
   const handleContextRestored = () => {
     if (destroyed) return
+    if (!buildGlResources()) {
+      // Leave contextLost set: the guards in draw()/start() are the only
+      // thing stopping a loop that would render nothing against dead GL
+      // objects until the browser fires another webglcontextlost.
+      program = null
+      vao = null
+      return
+    }
     contextLost = false
-    if (!buildGlResources()) return
     gl.viewport(0, 0, width, height)
     pushStaticUniforms()
     if (wasRunningBeforeLoss) {

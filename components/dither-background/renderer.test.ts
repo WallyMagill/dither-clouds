@@ -3,7 +3,7 @@ import { createRenderer } from './renderer'
 import { UNIFORM_NAMES } from './shader'
 
 /** Minimal recording fake of the subset of WebGL2 the renderer touches. */
-function createFakeGl(options: { failCompile?: boolean; failLink?: boolean } = {}) {
+function createFakeGl(options: { failCompile?: boolean; failLink?: boolean; failVao?: boolean } = {}) {
   const calls: string[] = []
   const uniformLocations = new Map<string, object>()
 
@@ -31,7 +31,7 @@ function createFakeGl(options: { failCompile?: boolean; failLink?: boolean } = {
     deleteProgram: vi.fn(),
     useProgram: vi.fn(),
 
-    createVertexArray: vi.fn(() => ({})),
+    createVertexArray: vi.fn(() => (options.failVao ? null : {})),
     bindVertexArray: vi.fn(),
     deleteVertexArray: vi.fn(),
 
@@ -117,6 +117,14 @@ describe('createRenderer', () => {
   test('returns null when program linking fails', () => {
     const canvas = createFakeCanvas(createFakeGl({ failLink: true }))
     expect(createRenderer(canvas)).toBeNull()
+  })
+
+  test('returns null when VAO creation fails, so the CSS-gradient fallback still applies', () => {
+    const canvas = createFakeCanvas(createFakeGl({ failVao: true }))
+    expect(createRenderer(canvas)).toBeNull()
+    // A leaked linked program on this failure path would be invisible to the
+    // caller — the component only falls back to CSS on a strict `null`.
+    expect(canvas.gl.deleteProgram).toHaveBeenCalled()
   })
 
   test('caches a location for every uniform exactly once', () => {
