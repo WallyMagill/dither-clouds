@@ -112,6 +112,23 @@ describe('resolveConfig', () => {
   })
 })
 
+describe('DEFAULT_CONFIG', () => {
+  // The exported singleton is what a consumer touches directly (unlike
+  // resolveConfig's output, which is already copied). Frozen so one caller
+  // mutating it can't corrupt every other caller sharing the module.
+  test('is frozen: assigning a field throws', () => {
+    expect(() => {
+      DEFAULT_CONFIG.speed = 999
+    }).toThrow()
+  })
+
+  test('is frozen: mutating its palette array throws', () => {
+    expect(() => {
+      DEFAULT_CONFIG.palette.push('#000000')
+    }).toThrow()
+  })
+})
+
 describe('resampleIndices', () => {
   test('resamples a 4-stop palette at bandCount 2 to the endpoints', () => {
     expect(resampleIndices(4, 2)).toEqual([0, 3])

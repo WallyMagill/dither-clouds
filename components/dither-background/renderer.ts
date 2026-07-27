@@ -2,8 +2,6 @@ import { type DitherConfig, type DitherConfigInput, paletteToFloat32, resolveCon
 import { UNIFORM_NAMES, VERTEX_SHADER, buildFragmentShader } from './shader'
 import { computeDrawingBufferSize, easeToward } from './viewport'
 
-export { normalizePointer } from './viewport'
-
 export type DitherRenderer = {
   setConfig(input: DitherConfigInput): void
   start(): void
@@ -254,9 +252,16 @@ export function createRenderer(
 
     setConfig(next: DitherConfigInput) {
       if (destroyed) return
-      // resolveConfig validates first, so an invalid palette throws without
-      // leaving GL state half-updated.
-      const resolved = resolveConfig({ ...config, ...next })
+      let resolved: DitherConfig
+      try {
+        resolved = resolveConfig({ ...config, ...next })
+      } catch (error) {
+        // Mount already falls back rather than throwing (see createRenderer). An
+        // update must not be harsher: a consumer passing a transiently-invalid
+        // palette should keep the last good frame, not unmount the page.
+        if (isDev) console.error('[dither-background] ignoring invalid config update:', error)
+        return
+      }
       config = resolved
       paletteBuffer = paletteToFloat32(config.palette, config.bandCount)
       pushStaticUniforms()
@@ -272,6 +277,7 @@ export function createRenderer(
     stop() {
       running = false
       lastTimestamp = null
+      wasRunningBeforeLoss = false
       cancelAnimationFrame(frame)
     },
 

@@ -1,4 +1,4 @@
-export { DitherBackground, default } from './dither-background'
+export { DitherBackground, default, fallbackGradient } from './dither-background'
 export type { DitherBackgroundProps } from './dither-background'
 export { DEFAULT_CONFIG, MAX_PALETTE_STOPS, resampleIndices, resolveConfig } from './config'
 export type { DitherConfig, DitherConfigInput } from './config'

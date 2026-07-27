@@ -10,10 +10,12 @@ export function computeDrawingBufferSize(
     Number.isFinite(devicePixelRatio) && devicePixelRatio > 0
       ? Math.min(devicePixelRatio, MAX_DPR)
       : 1
+  const width = Number.isFinite(cssWidth) ? cssWidth : 1
+  const height = Number.isFinite(cssHeight) ? cssHeight : 1
 
   return {
-    width: Math.max(1, Math.round(cssWidth * dpr)),
-    height: Math.max(1, Math.round(cssHeight * dpr)),
+    width: Math.max(1, Math.round(width * dpr)),
+    height: Math.max(1, Math.round(height * dpr)),
   }
 }
 

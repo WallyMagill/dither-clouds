@@ -46,6 +46,12 @@ export const DEFAULT_CONFIG: DitherConfig = {
   contrastHigh: 0.71,
   grain: 0.02,
 }
+// Frozen so the singleton a consumer imports and touches directly can't be
+// mutated out from under every other caller. `resolveConfig` spreads this
+// (and copies `palette` into a fresh array), so freezing here doesn't affect
+// its output.
+Object.freeze(DEFAULT_CONFIG.palette)
+Object.freeze(DEFAULT_CONFIG)
 
 const HEX_RE = /^#?([0-9a-f]{6})$/i
 

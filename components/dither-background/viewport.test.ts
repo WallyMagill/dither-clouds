@@ -26,6 +26,25 @@ describe('computeDrawingBufferSize', () => {
     expect(computeDrawingBufferSize(800, 600, Number.NaN)).toEqual({ width: 800, height: 600 })
     expect(computeDrawingBufferSize(800, 600, 0)).toEqual({ width: 800, height: 600 })
   })
+
+  test('treats a non-finite cssWidth as 1 css pixel rather than propagating NaN', () => {
+    // getBoundingClientRect can't produce this in the React shell, but resize()
+    // is on the exported DitherRenderer type and callable from any framework —
+    // a non-finite width must not collapse to a zero-sized drawing buffer.
+    expect(computeDrawingBufferSize(Number.NaN, 600, 1)).toEqual({ width: 1, height: 600 })
+    expect(computeDrawingBufferSize(Number.POSITIVE_INFINITY, 600, 1)).toEqual({
+      width: 1,
+      height: 600,
+    })
+  })
+
+  test('treats a non-finite cssHeight as 1 css pixel rather than propagating NaN', () => {
+    expect(computeDrawingBufferSize(800, Number.NaN, 1)).toEqual({ width: 800, height: 1 })
+    expect(computeDrawingBufferSize(800, Number.POSITIVE_INFINITY, 1)).toEqual({
+      width: 800,
+      height: 1,
+    })
+  })
 })
 
 describe('easeToward', () => {

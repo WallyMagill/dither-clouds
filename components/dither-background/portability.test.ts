@@ -10,6 +10,7 @@ const ENGINE_FILES = [
   'animation-gate.ts',
   'bayer.ts',
   'config.ts',
+  'engine.ts',
   'palettes.ts',
   'renderer.ts',
   'shader.ts',

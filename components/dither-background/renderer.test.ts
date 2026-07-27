@@ -231,10 +231,45 @@ describe('createRenderer', () => {
     expect(canvas.gl.calls.filter((c) => c === 'drawArrays').length).toBe(before)
   })
 
-  test('an invalid config throws before touching GL state', () => {
-    const canvas = createFakeCanvas(createFakeGl())
-    const renderer = createRenderer(canvas)!
-    expect(() => renderer.setConfig({ palette: ['#000000'], bandCount: 4 })).toThrow()
+  // setConfig must not propagate a resolveConfig failure: the never-throws
+  // contract holds at mount (createRenderer returns null), and an update must
+  // not be harsher than that — a consumer passing a transiently-invalid
+  // config should keep the last good frame, not unmount the whole page.
+  describe('setConfig with an invalid update', () => {
+    /** Reads the most recent value pushed to a given uniform name. */
+    function lastUniform1fValue(canvas: ReturnType<typeof createFakeCanvas>, name: string) {
+      const location = canvas.gl.uniformLocations.get(name)
+      const calls = (canvas.gl.uniform1f as ReturnType<typeof vi.fn>).mock.calls.filter(
+        ([loc]) => loc === location,
+      )
+      return calls[calls.length - 1][1]
+    }
+
+    test('does not throw', () => {
+      const canvas = createFakeCanvas(createFakeGl())
+      const renderer = createRenderer(canvas)!
+      expect(() => renderer.setConfig({ palette: ['#000000'] })).not.toThrow()
+    })
+
+    test('the previous config is retained — a rejected update never reaches pushStaticUniforms', () => {
+      const canvas = createFakeCanvas(createFakeGl())
+      const renderer = createRenderer(canvas, { cellSize: 20 })!
+      expect(lastUniform1fValue(canvas, 'uCellSize')).toBe(20)
+
+      renderer.setConfig({ palette: ['#000000'], cellSize: 99 })
+
+      expect(lastUniform1fValue(canvas, 'uCellSize')).toBe(20)
+    })
+
+    test('a valid update after a rejected one still applies', () => {
+      const canvas = createFakeCanvas(createFakeGl())
+      const renderer = createRenderer(canvas, { cellSize: 20 })!
+
+      renderer.setConfig({ palette: ['#000000'], cellSize: 99 }) // rejected
+      renderer.setConfig({ cellSize: 42 }) // valid
+
+      expect(lastUniform1fValue(canvas, 'uCellSize')).toBe(42)
+    })
   })
 
   // --- Context loss / restoration -------------------------------------
@@ -265,6 +300,22 @@ describe('createRenderer', () => {
 
     fireContextRestored(canvas)
     expect(renderer.running).toBe(true)
+  })
+
+  test('stop() after a context loss clears the running-before-loss flag, so a later restore does not resume', () => {
+    // Sequence under test: context lost while running -> something calls
+    // stop() before the context comes back -> restore must not resurrect the
+    // pre-loss running state, or a renderer explicitly stopped (e.g. for a
+    // reduced-motion preference) starts animating again anyway.
+    const canvas = createFakeCanvas(createFakeGl())
+    const renderer = createRenderer(canvas)!
+    renderer.start()
+
+    fireContextLost(canvas)
+    renderer.stop()
+
+    fireContextRestored(canvas)
+    expect(renderer.running).toBe(false)
   })
 
   test('restore stays stopped and draws exactly once if it was stopped at the moment of loss', () => {
