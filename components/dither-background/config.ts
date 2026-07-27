@@ -1,9 +1,9 @@
 export const MAX_PALETTE_STOPS = 6
 
 export type DitherConfig = {
-  /** Palette stops, light to dark. Length must be >= bandCount. */
+  /** Palette stops, light to dark. At least 2 required. */
   palette: string[]
-  /** Number of active palette stops, 2..MAX_PALETTE_STOPS. */
+  /** Number of active palette stops. Clamped to 2..min(MAX_PALETTE_STOPS, palette.length). */
   bandCount: number
   /** Halftone cell edge length in device pixels. */
   cellSize: number
@@ -32,7 +32,7 @@ export type DitherConfig = {
 export type DitherConfigInput = Partial<DitherConfig>
 
 export const DEFAULT_CONFIG: DitherConfig = {
-  palette: ['#C4C3B8', '#B8B7AE', '#1A2121', '#03000A', '#03000A', '#03000A'],
+  palette: ['#C4C3B8', '#B8B7AE', '#1A2121', '#03000A'],
   bandCount: 4,
   cellSize: 4,
   ditherStrength: 1,
@@ -64,15 +64,16 @@ function clamp(value: number, min: number, max: number): number {
 
 export function resolveConfig(input: DitherConfigInput = {}): DitherConfig {
   const merged = { ...DEFAULT_CONFIG, ...input }
-  const bandCount = Math.round(clamp(merged.bandCount, 2, MAX_PALETTE_STOPS))
 
-  if (merged.palette.length < bandCount) {
+  if (merged.palette.length < 2) {
     throw new Error(
-      `Palette has ${merged.palette.length} stop(s) but bandCount is ${bandCount}. ` +
-        `Provide at least ${bandCount} stops.`,
+      `Palette needs at least 2 stops, received ${merged.palette.length}.`,
     )
   }
   for (const stop of merged.palette) hexToVec3(stop)
+
+  const maxBands = Math.min(MAX_PALETTE_STOPS, merged.palette.length)
+  const bandCount = Math.round(clamp(merged.bandCount, 2, maxBands))
 
   return {
     ...merged,

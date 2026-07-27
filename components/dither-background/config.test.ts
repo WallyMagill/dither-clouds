@@ -46,9 +46,9 @@ describe('resolveConfig', () => {
     expect(c.noiseScale).toBe(DEFAULT_CONFIG.noiseScale)
   })
 
-  test('clamps bandCount into 2..MAX_PALETTE_STOPS', () => {
+  test('clamps bandCount into 2..palette length', () => {
     expect(resolveConfig({ bandCount: 0 }).bandCount).toBe(2)
-    expect(resolveConfig({ bandCount: 99 }).bandCount).toBe(MAX_PALETTE_STOPS)
+    expect(resolveConfig({ bandCount: 99 }).bandCount).toBe(4)
   })
 
   test('clamps ditherStrength into 0..1', () => {
@@ -60,8 +60,12 @@ describe('resolveConfig', () => {
     expect(resolveConfig({ cellSize: 0 }).cellSize).toBe(1)
   })
 
-  test('rejects a palette shorter than bandCount', () => {
-    expect(() => resolveConfig({ palette: ['#000000'], bandCount: 4 })).toThrow()
+  test('clamps bandCount down to the palette length', () => {
+    expect(resolveConfig({ palette: ['#FFFFFF', '#000000'], bandCount: 4 }).bandCount).toBe(2)
+  })
+
+  test('throws on a palette with fewer than 2 stops', () => {
+    expect(() => resolveConfig({ palette: ['#000000'] })).toThrow()
   })
 
   test('defaults match the spec measurements', () => {
