@@ -7,6 +7,19 @@ describe('generateBayer', () => {
     expect(generateBayer(1)).toEqual([0.125, 0.625, 0.875, 0.375])
   })
 
+  test('order 2 matches the canonical 4x4 Bayer matrix', () => {
+    // Aggregate properties (count, spacing, mean, uniqueness) are all invariant
+    // under a transposed or rotated quadrant mapping, so they cannot catch a
+    // wrong recursion. Pinning the exact raw values is the only test that can.
+    const raw = generateBayer(2).map((v) => Math.round(v * 16 - 0.5))
+    expect(raw).toEqual([
+       0,  8,  2, 10,
+      12,  4, 14,  6,
+       3, 11,  1,  9,
+      15,  7, 13,  5,
+    ])
+  })
+
   test('order n produces (2^n)^2 entries', () => {
     expect(generateBayer(1).length).toBe(4)
     expect(generateBayer(2).length).toBe(16)
