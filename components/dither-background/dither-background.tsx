@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { shouldAnimate } from './animation-gate'
 import { type DitherConfigInput, DEFAULT_CONFIG } from './config'
 import { type DitherRenderer, createRenderer } from './renderer'
 import { normalizePointer } from './viewport'
@@ -13,8 +14,11 @@ export type DitherBackgroundProps = {
 }
 
 /** Endpoint colors of the default palette, used for the no-WebGL fallback. */
-function fallbackGradient(config?: DitherConfigInput): string {
-  const palette = config?.palette ?? DEFAULT_CONFIG.palette
+export function fallbackGradient(config?: DitherConfigInput): string {
+  // A palette with fewer than 2 stops can't make a ramp (and is exactly the
+  // input that makes createRenderer return null), so this is the one case
+  // where the fallback itself must not depend on the caller's palette.
+  const palette = config?.palette && config.palette.length >= 2 ? config.palette : DEFAULT_CONFIG.palette
   const light = palette[0]
   const dark = palette[palette.length - 1]
   return `linear-gradient(160deg, ${light} 0%, ${dark} 100%)`
@@ -23,13 +27,16 @@ function fallbackGradient(config?: DitherConfigInput): string {
 export function DitherBackground({ config, className, paused = false }: DitherBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<DitherRenderer | null>(null)
+  // A context that was created but never drawn composites opaque black under
+  // alpha:false, which would hide the fallback gradient underneath it. The
+  // canvas stays hidden until the first real frame is ready to show.
+  const [rendererReady, setRendererReady] = useState(false)
 
-  // Config is read once, inside the mount effect below, which never re-runs.
-  // The `useRef` initializer alone captures the value present at first
-  // render — nothing may write `configRef.current` during render itself
-  // (the `react-hooks/refs` rule forbids it, and nothing here ever reads
-  // this ref again after the mount effect consumes it).
-  const configRef = useRef(config)
+  // `paused` is written from the dedicated effect below (never during render
+  // — that is the react-hooks/refs lint rule) and read by the gate on every
+  // event, so a stale closure can no longer invert the pause contract.
+  const pausedRef = useRef(paused)
+  const updateLoopRef = useRef<() => void>(() => {})
 
   // Mount: create the renderer once. Config changes are pushed as uniforms by
   // the effect below, never by recreating the context.
@@ -37,37 +44,46 @@ export function DitherBackground({ config, className, paused = false }: DitherBa
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const renderer = createRenderer(canvas, configRef.current)
+    const renderer = createRenderer(canvas, config)
     if (!renderer) return // fallback gradient on the wrapper stays visible
     rendererRef.current = renderer
+    setRendererReady(true)
 
     const parent = canvas.parentElement
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
 
     const sync = () => {
       const rect = (parent ?? canvas).getBoundingClientRect()
+      // resize() already redraws internally when the renderer is stopped, so
+      // no extra renderOnce() here — the observer callback below covers the
+      // gated-off case explicitly instead of drawing on every sync.
       renderer.resize(rect.width, rect.height, window.devicePixelRatio)
-      renderer.renderOnce()
     }
 
     let visible = true
-    const shouldAnimate = () =>
-      visible && !document.hidden && !reduceMotion.matches && !paused
+    const evaluateGate = () =>
+      shouldAnimate({
+        visible,
+        documentHidden: document.hidden,
+        reduceMotion: reduceMotion.matches,
+        paused: pausedRef.current,
+      })
 
     const updateLoop = () => {
-      if (shouldAnimate()) renderer.start()
+      if (evaluateGate()) renderer.start()
       else {
         renderer.stop()
         renderer.renderOnce()
       }
     }
+    updateLoopRef.current = updateLoop
 
     sync()
     updateLoop()
 
     const resizeObserver = new ResizeObserver(() => {
       sync()
-      if (!shouldAnimate()) renderer.renderOnce()
+      if (!evaluateGate()) renderer.renderOnce()
     })
     resizeObserver.observe(parent ?? canvas)
 
@@ -95,46 +111,64 @@ export function DitherBackground({ config, className, paused = false }: DitherBa
     document.addEventListener('visibilitychange', onVisibility)
     reduceMotion.addEventListener('change', onMotionChange)
     window.addEventListener('pointermove', onPointerMove, { passive: true })
-    window.addEventListener('pointerleave', onPointerLeave, { passive: true })
+    // pointerleave does not bubble, so a window listener never fires for an
+    // event targeted at a descendant. document still sees it via capture.
+    document.addEventListener('pointerleave', onPointerLeave, { passive: true })
 
     return () => {
       document.removeEventListener('visibilitychange', onVisibility)
       reduceMotion.removeEventListener('change', onMotionChange)
       window.removeEventListener('pointermove', onPointerMove)
-      window.removeEventListener('pointerleave', onPointerLeave)
+      document.removeEventListener('pointerleave', onPointerLeave)
       resizeObserver.disconnect()
       intersectionObserver.disconnect()
       renderer.destroy()
       rendererRef.current = null
+      setRendererReady(false)
     }
-    // `paused` is read through shouldAnimate on each event; the dedicated
-    // effect below handles changes to it without tearing down the context.
+    // `config` is read once, at construction; `paused` is read through
+    // pausedRef, kept fresh by the dedicated effect below. Neither should
+    // re-run this effect — recreating the WebGL context on every prop change
+    // is exactly what this design avoids.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Push config changes as uniforms. No relink, no remount, no restart.
   useEffect(() => {
-    if (config) rendererRef.current?.setConfig(config)
+    const renderer = rendererRef.current
+    if (!renderer || !config) return
+    renderer.setConfig(config)
+    // A stopped renderer owns no frame loop, so nothing would repaint it.
+    if (!renderer.running) renderer.renderOnce()
   }, [config])
 
   useEffect(() => {
-    const renderer = rendererRef.current
-    if (!renderer) return
-    if (paused) {
-      renderer.stop()
-      renderer.renderOnce()
-    } else if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      renderer.start()
-    }
+    pausedRef.current = paused
+    updateLoopRef.current()
   }, [paused])
 
   return (
     <div
       className={className}
-      style={{ position: 'absolute', inset: 0, background: fallbackGradient(config) }}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: fallbackGradient(config),
+        // Decoration only — never intercept clicks meant for real content
+        // stacked above or below this absolutely-positioned wrapper.
+        pointerEvents: 'none',
+      }}
       aria-hidden="true"
     >
-      <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
+      <canvas
+        ref={canvasRef}
+        style={{
+          display: 'block',
+          width: '100%',
+          height: '100%',
+          visibility: rendererReady ? 'visible' : 'hidden',
+        }}
+      />
     </div>
   )
 }

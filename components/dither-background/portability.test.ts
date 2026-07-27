@@ -6,18 +6,28 @@ const DIR = join(process.cwd(), 'components/dither-background')
 
 // The engine must stay liftable into a non-React project. If one of these
 // files ever imports React, the portability claim quietly becomes false.
-const ENGINE_FILES = ['bayer.ts', 'config.ts', 'palettes.ts', 'renderer.ts', 'shader.ts', 'viewport.ts']
+const ENGINE_FILES = [
+  'animation-gate.ts',
+  'bayer.ts',
+  'config.ts',
+  'palettes.ts',
+  'renderer.ts',
+  'shader.ts',
+  'viewport.ts',
+]
+
+// `index.ts` re-exports the React component from `dither-background.tsx`, so
+// it is exempt from the no-React rule below — but it must still show up
+// somewhere on this list, rather than being silently filtered out of the
+// disk scan, so a stray new file can't hide from either check.
+const REACT_ENTRY_FILES = ['index.ts']
 
 describe('engine portability', () => {
   test('the engine file list matches what is on disk', () => {
     const onDisk = readdirSync(DIR)
-      // `index.ts` (Task 8) is the public entry point that re-exports the
-      // React component from `dither-background.tsx` — it is deliberately
-      // not part of the portable engine and is excluded the same way the
-      // `.tsx` file is excluded by the `.ts`-only filter below.
-      .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && f !== 'index.ts')
+      .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
       .sort()
-    expect(onDisk).toEqual([...ENGINE_FILES].sort())
+    expect(onDisk).toEqual([...ENGINE_FILES, ...REACT_ENTRY_FILES].sort())
   })
 
   test.each(ENGINE_FILES)('%s does not import react', (file) => {
