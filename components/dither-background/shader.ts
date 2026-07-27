@@ -9,9 +9,9 @@ export const UNIFORM_NAMES = [
   'uBandCount',
   'uCellSize',
   'uDitherStrength',
-  'uNoiseScale',
-  'uWarpStrength',
-  'uWarpDetail',
+  'uCloudScale',
+  'uCoverage',
+  'uCrownDetail',
   'uPointerStrength',
   'uContrastLow',
   'uContrastHigh',
@@ -58,9 +58,9 @@ uniform vec3  uPalette[${MAX_PALETTE_STOPS}];
 uniform int   uBandCount;
 uniform float uCellSize;
 uniform float uDitherStrength;
-uniform float uNoiseScale;
-uniform float uWarpStrength;
-uniform float uWarpDetail;
+uniform float uCloudScale;
+uniform float uCoverage;
+uniform float uCrownDetail;
 uniform float uPointerStrength;
 uniform float uContrastLow;
 uniform float uContrastHigh;
@@ -185,12 +185,7 @@ float cloudBank(vec2 uv, float baseline, float thick, float scale, float lift,
   // Rigid horizontal translation. Nothing below depends on t.
   float x = (uv.x - drift * t) * scale + seed;
 
-  // 1D domain warp travelling WITH the bank, so lobe spacing is irregular
-  // rather than evenly periodic. It has to ride along; a screen-fixed warp
-  // would distort each cloud as it passed through, like wavy glass.
-  float wobble = snoise(vec3(x * 0.6, seed, 0.0)) * uWarpStrength * 0.35;
-
-  float top = baseline + lift * billow(vec3(x + wobble, seed * 1.7, 0.0));
+  float top = baseline + lift * billow(vec3(x, seed * 1.7, 0.0));
 
   // A band of finite depth, NOT an infinite fill below the silhouette. Filling
   // downward forever means only the topmost bank's edge is ever visible and
@@ -204,8 +199,12 @@ float cloudBank(vec2 uv, float baseline, float thick, float scale, float lift,
   // through the gaps instead of it reading as a continuous stripe. This has to
   // bite hard: a gentle threshold leaves the nearest bank an unbroken sheet
   // that hides every bank behind it, and the lower half of the frame goes flat.
+  // uCoverage 0 dissolves the banks entirely, 1 closes them into unbroken
+  // decks. Mapping it onto the threshold's lower edge (the band width is fixed)
+  // keeps the gap softness constant while the amount of sky changes.
   float holes = snoise(vec3(x * 1.3, uv.y * scale * 1.3, seed * 3.0));
-  cov *= smoothstep(-0.62, 0.24, holes);
+  float gapEdge = mix(0.6, -1.1, uCoverage);
+  cov *= smoothstep(gapEdge, gapEdge + 0.86, holes);
 
   // Self-shadowing. Cumulus are bright along their sunlit crowns and fall into
   // their own shadow underneath; without the gradient the banks read as flat
@@ -246,8 +245,8 @@ float cloudDensity(vec2 uv, float t) {
   // cloud in the lower frame, and both saturate to cream — the flat foreground.
   float lum = mix(0.20, 0.05, smoothstep(-0.28, 0.42, p.y));
 
-  float n = uNoiseScale;
-  float d = uWarpDetail * 2.0;
+  float n = uCloudScale;
+  float d = uCrownDetail * 2.0;
   float shade;
   float cov;
 

@@ -76,9 +76,9 @@ See `components/dither-background/config.ts` for the full JSDoc.
 | `bandCount` | `5` | Number of active palette stops. Clamped to `2..min(MAX_PALETTE_STOPS, palette.length)`. |
 | `cellSize` | `3` | Halftone cell edge length, in **device** pixels. |
 | `ditherStrength` | `0.77` | How far the Bayer threshold deviates from 0.5. `0` = hard posterize with no dot texture. |
-| `noiseScale` | `0.6` | Base frequency of the cloud field. Lower = fewer, larger masses. |
-| `warpStrength` | `0` | Jitters the spacing of the silhouette lobes. Off by default — the shape reads better without it. |
-| `warpDetail` | `0.55` | Billow detail on the cloud crown — this is what scallops edges into cauliflower lobes. At `0` they curve smoothly and read as fluid. |
+| `cloudScale` | `0.6` | Spatial frequency of the cloud field. **Lower = fewer, larger masses.** |
+| `coverage` | `0.72` | How much of the sky is cloud, `0..1`. `0` dissolves the banks entirely, `1` closes them into unbroken decks. The strongest compositional control. |
+| `crownDetail` | `0.55` | Billow detail on the cloud crowns — scallops the silhouette into cauliflower lobes. At `0` they curve smoothly and read as fluid. |
 | `speed` | `0.445` | Drift rate. Banks translate; nothing morphs in place. |
 | `pointerStrength` | `0` | How far the pointer bends the cloud edges. Off by default. |
 | `pointerEase` | `0.04` | Easing factor applied to pointer motion per frame, `(0..1]`. Floored at `0.001` — exactly `0` would freeze the pointer permanently. |

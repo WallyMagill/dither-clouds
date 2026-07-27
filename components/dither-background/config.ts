@@ -9,17 +9,22 @@ export type DitherConfig = {
   cellSize: number
   /** How far the Bayer threshold deviates from 0.5. 0 = hard posterize. */
   ditherStrength: number
-  /** Base frequency of the cloud field. Lower = fewer, larger cloud masses. */
-  noiseScale: number
-  /** How far the domain warp slides the cloud masses around. */
-  warpStrength: number
+  /** Spatial frequency of the cloud field. LOWER = fewer, larger masses. */
+  cloudScale: number
   /**
-   * Amount of billow detail added to the cloud boundary. This is what scallops
-   * the edges into rounded cauliflower lobes; at 0 the boundaries curve
-   * smoothly and the result reads as fluid rather than as cloud.
+   * How much of the sky is cloud, 0..1. Sets how hard the gaps are bitten
+   * through each bank: at 0 the banks dissolve entirely and only open sky is
+   * left, at 1 they close into unbroken decks. The strongest compositional
+   * control there is.
    */
-  warpDetail: number
-  /** Animation rate along the noise z axis. */
+  coverage: number
+  /**
+   * Billow detail on the cloud crowns. This is what scallops the silhouette
+   * into rounded cauliflower lobes; at 0 the crowns curve smoothly and the
+   * result reads as fluid rather than as cloud.
+   */
+  crownDetail: number
+  /** Drift rate. Banks translate across the frame; nothing morphs in place. */
   speed: number
   /** How far the pointer bends the fold pattern. 0 disables pointer input. */
   pointerStrength: number
@@ -44,11 +49,11 @@ export const DEFAULT_CONFIG: DitherConfig = {
   bandCount: 5,
   cellSize: 3,
   ditherStrength: 0.77,
-  noiseScale: 0.6,
-  // Zero by design. In the layered-bank architecture this only jitters the
-  // spacing of the silhouette lobes, and the shape reads better without it.
-  warpStrength: 0,
-  warpDetail: 0.55,
+  cloudScale: 0.6,
+  // 0.72 reproduces the hole-cutting threshold this was hardcoded at before it
+  // became a control.
+  coverage: 0.72,
+  crownDetail: 0.55,
   speed: 0.445,
   // Pointer interaction off by default; the drifting sky is better left alone.
   pointerStrength: 0,
@@ -109,9 +114,9 @@ export function resolveConfig(input: DitherConfigInput = {}): DitherConfig {
     bandCount,
     cellSize: atLeast(merged.cellSize, 1),
     ditherStrength: clamp(merged.ditherStrength, 0, 1),
-    noiseScale: atLeast(merged.noiseScale, 0.01),
-    warpStrength: atLeast(merged.warpStrength, 0),
-    warpDetail: atLeast(merged.warpDetail, 0),
+    cloudScale: atLeast(merged.cloudScale, 0.01),
+    coverage: clamp(merged.coverage, 0, 1),
+    crownDetail: atLeast(merged.crownDetail, 0),
     speed: atLeast(merged.speed, 0),
     pointerStrength: atLeast(merged.pointerStrength, 0),
     pointerEase: clamp(merged.pointerEase, 0.001, 1),

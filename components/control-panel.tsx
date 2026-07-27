@@ -23,23 +23,85 @@ type Slider = {
   min: number
   max: number
   step: number
+  /** Shown on hover — says which direction does what, where that isn't obvious. */
+  hint?: string
 }
 
-const SLIDERS: Slider[] = [
-  // bandCount's max is overridden per-render to
-  // min(MAX_PALETTE_STOPS, config.palette.length).
-  { key: 'bandCount', label: 'Bands', min: 2, max: 6, step: 1 },
-  { key: 'cellSize', label: 'Cell size (px)', min: 1, max: 16, step: 1 },
-  { key: 'ditherStrength', label: 'Dither strength', min: 0, max: 1, step: 0.01 },
-  { key: 'noiseScale', label: 'Noise scale', min: 0.2, max: 8, step: 0.1 },
-  { key: 'warpStrength', label: 'Warp strength', min: 0, max: 12, step: 0.1 },
-  { key: 'warpDetail', label: 'Warp detail', min: 0, max: 12, step: 0.1 },
-  { key: 'speed', label: 'Speed', min: 0, max: 0.6, step: 0.005 },
-  { key: 'pointerStrength', label: 'Pointer strength', min: 0, max: 3, step: 0.05 },
-  { key: 'contrastLow', label: 'Contrast low', min: 0, max: 1, step: 0.01 },
-  { key: 'contrastHigh', label: 'Contrast high', min: 0, max: 1, step: 0.01 },
-  { key: 'grain', label: 'Grain', min: 0, max: 0.2, step: 0.005 },
+/**
+ * Grouped by what the control does to the PICTURE, not by which shader stage it
+ * happens to feed. The previous flat list was named after the old noise-field
+ * architecture ("warp detail", "noise scale"), which meant nobody could predict
+ * what a slider did without reading the GLSL.
+ *
+ * Ranges are set from values that were actually dialled in, not guessed: the
+ * tuned drift speed of 0.445 sat near the top of the old 0–0.6 track, so the
+ * useful range clearly extended past it.
+ */
+const GROUPS: { title: string; sliders: Slider[] }[] = [
+  {
+    title: 'Composition',
+    sliders: [
+      {
+        key: 'cloudScale',
+        label: 'Cloud scale',
+        min: 0.15,
+        max: 2.5,
+        step: 0.01,
+        hint: 'Lower = fewer, larger cloud masses',
+      },
+      {
+        key: 'coverage',
+        label: 'Cloud coverage',
+        min: 0,
+        max: 1,
+        step: 0.01,
+        hint: 'How much of the sky is cloud. 0 dissolves the banks, 1 closes them into solid decks',
+      },
+      { key: 'contrastLow', label: 'Tone floor', min: 0, max: 1, step: 0.01 },
+      { key: 'contrastHigh', label: 'Tone ceiling', min: 0, max: 1, step: 0.01 },
+    ],
+  },
+  {
+    title: 'Form',
+    sliders: [
+      {
+        key: 'crownDetail',
+        label: 'Crown bumpiness',
+        min: 0,
+        max: 1.5,
+        step: 0.01,
+        hint: 'Scallops the cloud tops into cauliflower lobes. At 0 they curve smoothly and read as fluid',
+      },
+    ],
+  },
+  {
+    title: 'Motion',
+    sliders: [
+      {
+        key: 'speed',
+        label: 'Drift speed',
+        min: 0,
+        max: 1.5,
+        step: 0.005,
+        hint: 'Banks translate across the frame; nothing morphs in place',
+      },
+    ],
+  },
+  {
+    title: 'Print',
+    sliders: [
+      // bandCount's max is overridden per-render to
+      // min(MAX_PALETTE_STOPS, config.palette.length).
+      { key: 'bandCount', label: 'Inks', min: 2, max: 6, step: 1 },
+      { key: 'cellSize', label: 'Dot size (px)', min: 1, max: 12, step: 1 },
+      { key: 'ditherStrength', label: 'Dither', min: 0, max: 1, step: 0.01 },
+      { key: 'grain', label: 'Grain', min: 0, max: 0.2, step: 0.005 },
+    ],
+  },
 ]
+
+/** Value pointer strength returns to when the toggle is switched back on. */
+const POINTER_ON = 0.6
 
 // Displays exactly as many decimals as the slider's own step carries, so a
 // step-0.1 slider reads "2.2" rather than a hardcoded-precision "2.200".
@@ -154,25 +216,48 @@ export function ControlPanel({
         ))}
       </div>
 
-      {SLIDERS.map(({ key, label, min, max, step }) => (
-        <label key={key} className="mb-2 block">
-          <span className="flex justify-between text-white/50">
-            {label}
-            <span className="text-white/80">{Number(config[key]).toFixed(decimalsForStep(step))}</span>
-          </span>
-          <input
-            type="range"
-            min={min}
-            // resolveConfig clamps bandCount to min(MAX_PALETTE_STOPS,
-            // palette.length), so a static max of 6 would leave the slider
-            // visually stuck on shorter palettes (and wrong again above 6).
-            max={key === 'bandCount' ? Math.min(MAX_PALETTE_STOPS, config.palette.length) : max}
-            step={step}
-            value={Number(config[key])}
-            onChange={(e) => onChange({ [key]: Number(e.target.value) } as Partial<DitherConfig>)}
-            className="w-full accent-white/80"
-          />
-        </label>
+      {GROUPS.map((group) => (
+        <section key={group.title} className="mb-4">
+          <h3 className="mb-1.5 border-b border-white/10 pb-1 tracking-wide uppercase text-white/40">
+            {group.title}
+          </h3>
+          {group.sliders.map(({ key, label, min, max, step, hint }) => (
+            <label key={key} className="mb-2 block" title={hint}>
+              <span className="flex justify-between text-white/50">
+                {label}
+                <span className="text-white/80">
+                  {Number(config[key]).toFixed(decimalsForStep(step))}
+                </span>
+              </span>
+              <input
+                type="range"
+                min={min}
+                // resolveConfig clamps bandCount to min(MAX_PALETTE_STOPS,
+                // palette.length), so a static max of 6 would leave the slider
+                // visually stuck on shorter palettes (and wrong again above 6).
+                max={key === 'bandCount' ? Math.min(MAX_PALETTE_STOPS, config.palette.length) : max}
+                step={step}
+                value={Number(config[key])}
+                onChange={(e) => onChange({ [key]: Number(e.target.value) } as Partial<DitherConfig>)}
+                className="w-full accent-white/80"
+              />
+            </label>
+          ))}
+
+          {group.title === 'Motion' && (
+            // Pointer interaction is on or off in practice — nobody tunes its
+            // magnitude — so it earns a checkbox rather than a slider.
+            <label className="mt-1 flex cursor-pointer items-center gap-2 text-white/50">
+              <input
+                type="checkbox"
+                checked={config.pointerStrength > 0}
+                onChange={(e) => onChange({ pointerStrength: e.target.checked ? POINTER_ON : 0 })}
+                className="cursor-pointer accent-white/80"
+              />
+              Pointer bends the clouds
+            </label>
+          )}
+        </section>
       ))}
 
       <button

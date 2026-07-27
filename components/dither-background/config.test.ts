@@ -44,7 +44,7 @@ describe('resolveConfig', () => {
   test('overrides only the provided fields', () => {
     const c = resolveConfig({ speed: 0.5 })
     expect(c.speed).toBe(0.5)
-    expect(c.noiseScale).toBe(DEFAULT_CONFIG.noiseScale)
+    expect(c.cloudScale).toBe(DEFAULT_CONFIG.cloudScale)
   })
 
   test('clamps bandCount into 2..palette length', () => {
@@ -78,6 +78,12 @@ describe('resolveConfig', () => {
   test('orders an inverted contrast window instead of accepting it', () => {
     const c = resolveConfig({ contrastLow: 0.9, contrastHigh: 0.1 })
     expect(c.contrastHigh).toBeGreaterThan(c.contrastLow)
+  })
+
+  test('clamps coverage into 0..1', () => {
+    expect(resolveConfig({ coverage: -1 }).coverage).toBe(0)
+    expect(resolveConfig({ coverage: 5 }).coverage).toBe(1)
+    expect(resolveConfig({ coverage: Number.NaN }).coverage).toBe(0)
   })
 
   test('clamps ditherStrength into 0..1', () => {
