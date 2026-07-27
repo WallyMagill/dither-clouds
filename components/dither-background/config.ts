@@ -41,25 +41,20 @@ export type DitherConfigInput = Partial<DitherConfig>
 
 export const DEFAULT_CONFIG: DitherConfig = {
   palette: ['#DEDACA', '#B4B0A7', '#6E7A76', '#31454A', '#16181D'],
-  bandCount: 3,
-  cellSize: 4,
-  ditherStrength: 1,
-  // Large, slow, atmospheric masses — a few cloud forms across the frame rather
-  // than many small ones. Raising this past ~0.6 starts reading as camouflage.
-  noiseScale: 0.68,
-  // Gentle warping only. Enough to make the boundaries irregular and slowly
-  // curving; past ~1.5 the forms shear into marbling.
-  warpStrength: 0.55,
+  bandCount: 5,
+  cellSize: 3,
+  ditherStrength: 0.77,
+  noiseScale: 0.6,
+  // Zero by design. In the layered-bank architecture this only jitters the
+  // spacing of the silhouette lobes, and the shape reads better without it.
+  warpStrength: 0,
   warpDetail: 0.55,
-  speed: 0.08,
-  pointerStrength: 0.6,
+  speed: 0.445,
+  // Pointer interaction off by default; the drifting sky is better left alone.
+  pointerStrength: 0,
   pointerEase: 0.04,
-  // Deliberately asymmetric about 0.5. A centred window spreads every tone
-  // evenly over the canvas; pushing the window up leaves broad pale areas as
-  // the default state and concentrates the darks into a few dramatic voids,
-  // which is what gives the composition hierarchy and breathing room.
-  contrastLow: 0.20,
-  contrastHigh: 0.82,
+  contrastLow: 0.19,
+  contrastHigh: 0.96,
   grain: 0.02,
 }
 // Frozen so the singleton a consumer imports and touches directly can't be

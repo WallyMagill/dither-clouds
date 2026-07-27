@@ -74,16 +74,16 @@ See `components/dither-background/config.ts` for the full JSDoc.
 |---|---|---|
 | `palette` | `['#DEDACA', '#B4B0A7', '#6E7A76', '#31454A', '#16181D']` | Palette stops, light to dark. At least 2 required. |
 | `bandCount` | `5` | Number of active palette stops. Clamped to `2..min(MAX_PALETTE_STOPS, palette.length)`. |
-| `cellSize` | `8` | Halftone cell edge length, in **device** pixels. |
-| `ditherStrength` | `1` | How far the Bayer threshold deviates from 0.5. `0` = hard posterize with no dot texture. |
-| `noiseScale` | `1.0` | Base frequency of the cloud field. Lower = fewer, larger masses. |
-| `warpStrength` | `0.55` | How far the domain warp slides the cloud masses around. Past ~1.5 they shear into marbling. |
-| `warpDetail` | `0.55` | Billow detail on the cloud boundary — this is what scallops edges into cauliflower lobes. At `0` the edges curve smoothly and read as fluid, not cloud. |
-| `speed` | `0.08` | Animation rate along the noise z axis. |
-| `pointerStrength` | `0.6` | How far the pointer bends the fold pattern. `0` disables pointer input. |
+| `cellSize` | `3` | Halftone cell edge length, in **device** pixels. |
+| `ditherStrength` | `0.77` | How far the Bayer threshold deviates from 0.5. `0` = hard posterize with no dot texture. |
+| `noiseScale` | `0.6` | Base frequency of the cloud field. Lower = fewer, larger masses. |
+| `warpStrength` | `0` | Jitters the spacing of the silhouette lobes. Off by default — the shape reads better without it. |
+| `warpDetail` | `0.55` | Billow detail on the cloud crown — this is what scallops edges into cauliflower lobes. At `0` they curve smoothly and read as fluid. |
+| `speed` | `0.445` | Drift rate. Banks translate; nothing morphs in place. |
+| `pointerStrength` | `0` | How far the pointer bends the cloud edges. Off by default. |
 | `pointerEase` | `0.04` | Easing factor applied to pointer motion per frame, `(0..1]`. Floored at `0.001` — exactly `0` would freeze the pointer permanently. |
-| `contrastLow` | `0.30` | Lower edge of the contrast remap window. |
-| `contrastHigh` | `0.72` | Upper edge of the contrast remap window. |
+| `contrastLow` | `0.19` | Lower edge of the contrast remap window. |
+| `contrastHigh` | `0.96` | Upper edge of the contrast remap window. |
 | `grain` | `0.02` | Amplitude of the per-cell grain pass. |
 
 `bandCount` below `palette.length` resamples the ramp rather than truncating

@@ -98,10 +98,10 @@ describe('resolveConfig', () => {
   })
 
   test('defaults match the spec measurements', () => {
-    expect(DEFAULT_CONFIG.bandCount).toBe(3)
-    // 4 DEVICE px = 2 CSS px at the dpr-2 cap. The reference's halftone is a
-    // fine screen, and a coarser cell reads as pixel art rather than print.
-    expect(DEFAULT_CONFIG.cellSize).toBe(4)
+    expect(DEFAULT_CONFIG.bandCount).toBe(5)
+    // 3 DEVICE px. The reference's halftone is a fine screen; coarser cells
+    // read as pixel art rather than print.
+    expect(DEFAULT_CONFIG.cellSize).toBe(3)
     // Both endpoints are measured from docs/reference-clouds.png: warm paper
     // (R-B = +13) and a navy — not black — void (R-B = -7). The midtones
     // between them are a design choice; see the note in palettes.ts.
