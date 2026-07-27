@@ -4,19 +4,25 @@ A fullscreen animated WebGL2 background: drifting cumulus cloud masses,
 quantized to a small muted palette and rendered through a screen-space
 ordered-dither halftone grid — like an editorial screen print or risograph.
 
-The cloud shape comes from three things working together, and losing any one of
-them makes it read as fluid or smoke instead:
+The sky is built as a PICTURE WITH DEPTH, not as one posterized noise field.
+Six cloud banks are composited far-to-near with a painter's algorithm. Every
+depth cue moves together: banks further back sit higher on screen, have smaller
+features, drift slower, and blend further toward the sky colour. Break any one
+and the stack flattens into texture.
 
-- **A low `noiseScale`** so the frame holds a few large masses rather than many
-  small ones.
-- **Billow detail (`warpDetail`) on the boundary.** `abs(noise)` is convex
-  almost everywhere, so it pushes cloud edges outward into rounded cauliflower
-  scallops. Ordinary fbm curves inward and outward equally, which reads as flow.
-  Billow belongs on the *boundary*: driving the whole density from it makes its
-  zero-crossing creases dominate and the warp stretches them into veins.
-- **Two decks combined with a smooth max**, so one cloud occludes another and
-  the sky has depth. A plain `max()` leaves C0 creases along every crossing
-  curve, and the warp pulls those into tendrils.
+Three details carry the whole effect:
+
+- **Banks translate, they do not morph.** Each bank's sample coordinate is
+  offset by `drift * t` and no time term ever reaches the noise itself. Putting
+  time on the noise's z axis churns the field in place, which is exactly what
+  reads as flowing liquid. Sampling a fixed field at a moving offset makes each
+  bank a rigid body that crosses the frame keeping its shape.
+- **Billow silhouettes.** `abs(noise)` is convex almost everywhere, so cloud
+  crowns scallop into cauliflower lobes. Ordinary fbm curves inward and outward
+  equally and reads as flow.
+- **Bands of finite depth, not fills.** A bank that fills everything below its
+  silhouette hides every bank behind it, and the stack collapses to one horizon
+  line.
 
 It never throws and never leaves a blank canvas: if WebGL2 is unavailable, a
 shader fails to compile/link, or the config turns out to be invalid, the

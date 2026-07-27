@@ -73,7 +73,7 @@ const float BAYER[${BAYER_8.length}] = float[${BAYER_8.length}](${bayerLiteral})
 // the palette bands never separate. This gain expands the field to span roughly
 // 0..1 before the contrast window shapes it, which is what gives uContrastLow/High
 // meaningful travel instead of crowding all the useful range into a few slider steps.
-const float FIELD_GAIN = 1.75;
+const float FIELD_GAIN = 1.0;
 
 // How far the tonal range is inset from pure 0 and 1. See the use site in
 // main() — this is what keeps a minimum dot density in the lightest and darkest
@@ -148,18 +148,6 @@ float snoise(vec3 v) {
   return 42.0 * dot(m * m, vec4(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3)));
 }
 
-float fbm(vec3 p) {
-  float sum = 0.0;
-  float amp = 0.5;
-  float freq = 1.0;
-  for (int i = 0; i < ${octaves}; i++) {
-    sum += amp * snoise(p * freq);
-    freq *= 2.0;   // lacunarity
-    amp  *= 0.5;   // gain
-  }
-  return sum;
-}
-
 // Billow noise. Taking the absolute value folds the field at every zero
 // crossing, so smooth waves become rounded, outward-bulging lobes. That fold is
 // the whole difference between a cumulus puff and a fluid swirl: plain fbm
@@ -180,13 +168,62 @@ float billow(vec3 p) {
   return sum / norm;
 }
 
-// Smooth maximum. A plain max() of two fields is only C0 continuous: along the
-// curve where they cross it leaves a hard crease, and the domain warp stretches
-// those creases into thin tendrils that read as smoke. Blending across a band of
-// width k keeps the occlusion (the nearer deck still wins) without the seam.
-float smax(float a, float b, float k) {
-  float h = clamp(0.5 + 0.5 * (a - b) / k, 0.0, 1.0);
-  return mix(b, a, h) + k * h * (1.0 - h);
+// One cloud bank: a deck that fills downward from a scalloped top silhouette.
+//
+// Two things here are the whole difference between a sky and a noise field.
+//
+// First, the bank TRANSLATES. Its x coordinate is offset by drift * t and no
+// time term is ever fed into the noise itself. Time on the noise z axis morphs the
+// field in place, which is exactly what reads as flowing liquid — the shapes
+// churn instead of travelling. Sampling a fixed field at a moving offset makes
+// each bank a rigid body that crosses the frame and keeps its shape.
+//
+// Second, the silhouette is billow (|noise|), whose lobes are convex, so the
+// top edge scallops into cauliflower bumps the way a cumulus crown does.
+float cloudBank(vec2 uv, float baseline, float thick, float scale, float lift,
+                float seed, float drift, float t, out float shade) {
+  // Rigid horizontal translation. Nothing below depends on t.
+  float x = (uv.x - drift * t) * scale + seed;
+
+  // 1D domain warp travelling WITH the bank, so lobe spacing is irregular
+  // rather than evenly periodic. It has to ride along; a screen-fixed warp
+  // would distort each cloud as it passed through, like wavy glass.
+  float wobble = snoise(vec3(x * 0.6, seed, 0.0)) * uWarpStrength * 0.35;
+
+  float top = baseline + lift * billow(vec3(x + wobble, seed * 1.7, 0.0));
+
+  // A band of finite depth, NOT an infinite fill below the silhouette. Filling
+  // downward forever means only the topmost bank's edge is ever visible and
+  // every bank behind it is hidden, so the whole stack collapses into a single
+  // horizon line. The bottom follows the scalloped top and fades out.
+  float bottom = top - thick;
+  float cov = smoothstep(top, top - 0.085, uv.y)
+            * smoothstep(bottom, bottom + 0.16, uv.y);
+
+  // Break the band into discrete puffs so sky, and the banks behind, show
+  // through the gaps instead of it reading as a continuous stripe. This has to
+  // bite hard: a gentle threshold leaves the nearest bank an unbroken sheet
+  // that hides every bank behind it, and the lower half of the frame goes flat.
+  float holes = snoise(vec3(x * 1.3, uv.y * scale * 1.3, seed * 3.0));
+  cov *= smoothstep(-0.62, 0.24, holes);
+
+  // Self-shadowing. Cumulus are bright along their sunlit crowns and fall into
+  // their own shadow underneath; without the gradient the banks read as flat
+  // paper cutouts stacked on each other.
+  float depthIn = clamp((top - uv.y) * 4.0, 0.0, 1.0);
+
+  // Internal puff structure, from billow so the lobes inside a bank are convex
+  // too — this is what keeps a filled region from reading as flat paper. It
+  // needs real contrast: a subtle version leaves the foreground a blank sheet
+  // no matter how good the silhouette above it is.
+  // Frequency matters more than amplitude here. At the near bank's scale a 1.4x
+  // multiplier works out to under three features across the whole frame — near
+  // enough to constant that the foreground renders as a blank sheet no matter
+  // how strong the contrast is.
+  float tex = billow(vec3(x * 4.5, uv.y * scale * 4.5, seed * 5.0));
+  shade = mix(1.0, 0.44, depthIn) * (0.66 + 0.70 * tex);
+
+  return clamp(cov, 0.0, 1.0);
 }
 
 // Cloud density in 0..1, high where cloud is.
@@ -195,46 +232,56 @@ float smax(float a, float b, float k) {
 // scaled by a radial falloff around the cursor. Adding it to the base would
 // translate the whole sky; adding it here bends the cloud edges locally.
 float cloudDensity(vec2 uv, float t) {
-  vec3 p = vec3(uv * uNoiseScale, t);
-
-  // The warp is driven by SMOOTH fbm, not billow. Distorting with billow would
-  // fold the distortion itself and crease the lobes; smooth distortion slides
-  // them around and keeps their edges irregular without breaking them up.
-  vec2 q = vec2(
-    fbm(p),
-    fbm(p + vec3(5.2, 1.3, 0.0))
-  );
-
   // uPointer arrives in -1..1 element space; uv is aspect-corrected about the
   // center. Convert before comparing them, or the falloff centers on the wrong
   // place on any non-square viewport.
   vec2 pointerUv = uPointer * 0.5 * uResolution / max(uResolution.x, uResolution.y);
   float pointerFalloff = exp(-4.0 * length(uv - pointerUv));
-  vec2 pointerBend = uPointer * uPointerStrength * pointerFalloff;
+  vec2 p = uv + uPointer * uPointerStrength * 0.06 * pointerFalloff;
 
-  vec3 warped = p + vec3(uWarpStrength * q + pointerBend, 0.15 * t);
+  // Open sky behind everything. It must stay DARK across the whole frame: sky
+  // is the palette's navy end and cloud is its cream end, so the contrast
+  // between them is the entire image. Giving this the brighten-toward-the-
+  // horizon gradient of a real daytime photo puts bright sky behind bright
+  // cloud in the lower frame, and both saturate to cream — the flat foreground.
+  float lum = mix(0.20, 0.05, smoothstep(-0.28, 0.42, p.y));
 
-  // Two cloud decks at different scales, combined with max() rather than a
-  // blend or a sum. Where both have mass the nearer one simply wins, which is
-  // what occlusion looks like — one cloud passing in front of another, giving
-  // depth. Averaging them instead dissolves both into a single uniform haze,
-  // which is the "fluid" reading this is meant to replace.
-  float deckNear = fbm(warped) * 0.5 + 0.5;
-  float deckFar = fbm(warped * 1.55 + vec3(11.3, 5.7, 0.31 * t)) * 0.5 + 0.5;
-  float base = smax(deckNear, deckFar * 0.93, 0.12);
+  float n = uNoiseScale;
+  float d = uWarpDetail * 2.0;
+  float shade;
+  float cov;
 
-  // Billow detail on top of the smooth base. |noise| is convex almost
-  // everywhere, so adding it pushes the cloud boundary OUTWARD into rounded
-  // scallops rather than letting it curve smoothly like a fluid front. It
-  // belongs here as a perturbation, not as the base field: driving the whole
-  // density from billow makes its zero-crossing creases the dominant structure
-  // and the warp stretches those creases into veins.
+  // Painter's algorithm, FAR to NEAR. This is a picture with depth, not a
+  // single field: each bank is composited over what is already behind it, so
+  // nearer clouds genuinely occlude farther ones.
   //
-  // Frequency matters as much as amplitude. Much above ~2x the base it stops
-  // reading as scalloped cloud edge and starts adding wisps.
-  float lobes = billow(warped * 1.8 + vec3(2.7, 8.1, 0.0)) - 0.32;
+  // Every cue moves together with depth. Farther banks sit HIGHER on screen,
+  // have SMALLER features (larger scale multiplier), drift SLOWER (parallax),
+  // and blend further toward the sky colour (aerial haze). Break any one of
+  // those and the stack flattens back into a texture.
+  // Baselines are tuned to the visible uv.y range, which is only about +/-0.27
+  // on a landscape viewport because uv is aspect-corrected by the LONG axis.
+  // Spacing them wider than that pushes the far bank off the top and lets the
+  // near bank fill the whole lower frame as one flat slab.
+  cov = cloudBank(p,  0.19, 0.20, 7.30 * n, 0.09 * d, 11.3, 0.025, t, shade);
+  lum = mix(lum, mix(lum, shade, 0.42), cov);
 
-  return clamp(base + lobes * uWarpDetail, 0.0, 1.0);
+  cov = cloudBank(p,  0.11, 0.22, 5.10 * n, 0.11 * d, 27.9, 0.045, t, shade);
+  lum = mix(lum, mix(lum, shade, 0.56), cov);
+
+  cov = cloudBank(p,  0.03, 0.24, 3.70 * n, 0.13 * d, 41.2, 0.070, t, shade);
+  lum = mix(lum, mix(lum, shade, 0.70), cov);
+
+  cov = cloudBank(p, -0.05, 0.26, 2.60 * n, 0.15 * d, 58.6, 0.100, t, shade);
+  lum = mix(lum, mix(lum, shade, 0.82), cov);
+
+  cov = cloudBank(p, -0.13, 0.28, 1.90 * n, 0.17 * d, 73.1, 0.135, t, shade);
+  lum = mix(lum, mix(lum, shade, 0.92), cov);
+
+  cov = cloudBank(p, -0.22, 0.34, 1.35 * n, 0.20 * d, 92.4, 0.175, t, shade);
+  lum = mix(lum, shade, cov);
+
+  return clamp(lum, 0.0, 1.0);
 }
 
 // The Bayer threshold is sampled in DEVICE PIXELS from gl_FragCoord and is

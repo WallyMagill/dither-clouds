@@ -106,13 +106,37 @@ describe('fragment shader', () => {
     expect(frag).toMatch(/sum \+= amp \* abs\(snoise\(p \* freq\)\)/)
   })
 
-  test('combines the two cloud decks with a smooth max, never a plain max', () => {
-    // A plain max() is only C0 continuous: the curve where the decks cross
-    // leaves a crease, and the domain warp stretches those creases into thin
-    // tendrils that read as smoke rather than cloud. This was a real defect.
-    expect(frag).toContain('float smax(')
-    expect(frag).toMatch(/smax\(deckNear, deckFar/)
-    expect(frag).not.toMatch(/=\s*max\(deckNear/)
+  test('composites cloud banks far-to-near with a painter\'s algorithm', () => {
+    // Depth is what makes this a picture of a sky rather than one posterized
+    // field. Losing a bank, or compositing them in the wrong order, flattens
+    // the stack back into texture without failing any other test.
+    const banks = [...frag.matchAll(/cloudBank\(p,\s*(-?\d+\.\d+)/g)].map((m) => Number(m[1]))
+    expect(banks.length).toBeGreaterThanOrEqual(4)
+    // Baselines must descend: each nearer bank sits LOWER on screen.
+    expect(banks).toEqual([...banks].sort((a, b) => b - a))
+  })
+
+  test('cloud banks translate rather than morphing in place', () => {
+    // The single most important motion property. Feeding time into the noise's
+    // z axis churns the field and reads as flowing liquid; offsetting the
+    // sample coordinate by drift * t moves each bank as a rigid body.
+    expect(frag).toMatch(/float x = \(uv\.x - drift \* t\) \* scale \+ seed;/)
+    // Nothing inside a bank may depend on t except that one offset. Measure the
+    // body only: skip past the signature (which declares `float t`) and strip
+    // comments (the prose above the function discusses t at length).
+    const start = frag.indexOf('float cloudBank(')
+    const body = frag
+      .slice(frag.indexOf('{', start), frag.indexOf('float cloudDensity('))
+      .replace(/\/\/[^\n]*/g, '')
+    const tUses = [...body.matchAll(/\bt\b/g)].length
+    expect(tUses, 'cloud bank body should reference t exactly once').toBe(1)
+  })
+
+  test('nearer cloud banks drift faster than farther ones', () => {
+    // Parallax is the depth cue that survives even when the palette is flat.
+    const drifts = [...frag.matchAll(/cloudBank\(p,[^)]*?,\s*(0\.\d+),\s*t,/g)].map((m) => Number(m[1]))
+    expect(drifts.length).toBeGreaterThanOrEqual(4)
+    expect(drifts).toEqual([...drifts].sort((a, b) => a - b))
   })
 
   test('inverts density so dense cloud takes the palette light stop', () => {

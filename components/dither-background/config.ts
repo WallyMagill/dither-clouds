@@ -41,12 +41,12 @@ export type DitherConfigInput = Partial<DitherConfig>
 
 export const DEFAULT_CONFIG: DitherConfig = {
   palette: ['#DEDACA', '#B4B0A7', '#6E7A76', '#31454A', '#16181D'],
-  bandCount: 5,
-  cellSize: 8,
+  bandCount: 3,
+  cellSize: 4,
   ditherStrength: 1,
   // Large, slow, atmospheric masses — a few cloud forms across the frame rather
   // than many small ones. Raising this past ~0.6 starts reading as camouflage.
-  noiseScale: 1.0,
+  noiseScale: 0.68,
   // Gentle warping only. Enough to make the boundaries irregular and slowly
   // curving; past ~1.5 the forms shear into marbling.
   warpStrength: 0.55,
@@ -58,8 +58,8 @@ export const DEFAULT_CONFIG: DitherConfig = {
   // evenly over the canvas; pushing the window up leaves broad pale areas as
   // the default state and concentrates the darks into a few dramatic voids,
   // which is what gives the composition hierarchy and breathing room.
-  contrastLow: 0.30,
-  contrastHigh: 0.72,
+  contrastLow: 0.20,
+  contrastHigh: 0.82,
   grain: 0.02,
 }
 // Frozen so the singleton a consumer imports and touches directly can't be
