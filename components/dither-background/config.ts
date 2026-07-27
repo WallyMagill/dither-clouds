@@ -104,19 +104,30 @@ export function resolveConfig(input: DitherConfigInput = {}): DitherConfig {
   }
 }
 
+/**
+ * Which palette indices an N-band render actually samples. Both endpoints are
+ * pinned so lowering the band count coarsens the ramp instead of truncating its
+ * dark end. Exported so UI can show exactly the stops that are rendering.
+ */
+export function resampleIndices(paletteLength: number, bandCount: number): number[] {
+  const active = Math.max(1, Math.min(Math.trunc(bandCount) || 0, paletteLength))
+  if (active === 1) return [0]
+  return Array.from({ length: active }, (_, i) =>
+    Math.round((i * (paletteLength - 1)) / (active - 1)),
+  )
+}
+
 export function paletteToFloat32(palette: string[], bandCount: number): Float32Array {
   const out = new Float32Array(MAX_PALETTE_STOPS * 3)
-  const active = Math.max(1, Math.min(Math.trunc(bandCount) || 0, palette.length))
+  const indices = resampleIndices(palette.length, bandCount)
 
   // Palettes run light to dark, so taking the first N stops would drop the dark
   // end and wash the image out. Resample across the whole ramp instead, pinning
   // both endpoints — a lower band count should coarsen the ramp, not truncate it.
   let last: [number, number, number] = [0, 0, 0]
   for (let i = 0; i < MAX_PALETTE_STOPS; i++) {
-    if (i < active) {
-      const source =
-        active === 1 ? 0 : Math.round((i * (palette.length - 1)) / (active - 1))
-      last = hexToVec3(palette[source])
+    if (i < indices.length) {
+      last = hexToVec3(palette[indices[i]])
     }
     out[i * 3] = last[0]
     out[i * 3 + 1] = last[1]

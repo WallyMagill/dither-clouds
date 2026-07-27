@@ -4,6 +4,7 @@ import {
   MAX_PALETTE_STOPS,
   hexToVec3,
   paletteToFloat32,
+  resampleIndices,
   resolveConfig,
 } from './config'
 
@@ -104,6 +105,38 @@ describe('resolveConfig', () => {
       '#1A2121',
       '#03000A',
     ])
+  })
+})
+
+describe('resampleIndices', () => {
+  test('resamples a 4-stop palette at bandCount 2 to the endpoints', () => {
+    expect(resampleIndices(4, 2)).toEqual([0, 3])
+  })
+
+  test('is the identity mapping when bandCount equals palette length', () => {
+    expect(resampleIndices(4, 4)).toEqual([0, 1, 2, 3])
+  })
+
+  test('resamples a 5-stop palette at bandCount 3 evenly', () => {
+    expect(resampleIndices(5, 3)).toEqual([0, 2, 4])
+  })
+
+  test('returns just the first index when bandCount is 1', () => {
+    expect(resampleIndices(4, 1)).toEqual([0])
+  })
+
+  test('a non-finite band count returns [0]', () => {
+    expect(resampleIndices(4, Number.NaN)).toEqual([0])
+  })
+
+  test('first and last entries are always 0 and paletteLength - 1 for any bandCount >= 2', () => {
+    for (let paletteLength = 2; paletteLength <= 7; paletteLength++) {
+      for (let bandCount = 2; bandCount <= paletteLength; bandCount++) {
+        const indices = resampleIndices(paletteLength, bandCount)
+        expect(indices[0]).toBe(0)
+        expect(indices[indices.length - 1]).toBe(paletteLength - 1)
+      }
+    }
   })
 })
 

@@ -4,12 +4,21 @@ import { useEffect, useState } from 'react'
 import {
   type DitherConfig,
   type PaletteName,
+  MAX_PALETTE_STOPS,
   PALETTES,
   PALETTE_NAMES,
+  resampleIndices,
 } from '@/components/dither-background'
 
+// Only the numeric fields of DitherConfig are slider-able — excludes
+// `palette` (string[]) so a slider can never be wired to write a number into
+// the palette slot, and the `as Partial<DitherConfig>` cast below stays sound.
+type NumericConfigKey = {
+  [K in keyof DitherConfig]: DitherConfig[K] extends number ? K : never
+}[keyof DitherConfig]
+
 type Slider = {
-  key: keyof DitherConfig
+  key: NumericConfigKey
   label: string
   min: number
   max: number
@@ -17,7 +26,8 @@ type Slider = {
 }
 
 const SLIDERS: Slider[] = [
-  // bandCount's max is overridden per-render to config.palette.length.
+  // bandCount's max is overridden per-render to
+  // min(MAX_PALETTE_STOPS, config.palette.length).
   { key: 'bandCount', label: 'Bands', min: 2, max: 6, step: 1 },
   { key: 'cellSize', label: 'Cell size (px)', min: 1, max: 16, step: 1 },
   { key: 'ditherStrength', label: 'Dither strength', min: 0, max: 1, step: 0.01 },
@@ -30,6 +40,14 @@ const SLIDERS: Slider[] = [
   { key: 'contrastHigh', label: 'Contrast high', min: 0, max: 1, step: 0.01 },
   { key: 'grain', label: 'Grain', min: 0, max: 0.2, step: 0.005 },
 ]
+
+// Displays exactly as many decimals as the slider's own step carries, so a
+// step-0.1 slider reads "2.2" rather than a hardcoded-precision "2.200".
+function decimalsForStep(step: number): number {
+  const s = step.toString()
+  const i = s.indexOf('.')
+  return i === -1 ? 0 : s.length - i - 1
+}
 
 export function ControlPanel({
   config,
@@ -45,10 +63,12 @@ export function ControlPanel({
   // background, not a demo harness.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === '`') {
-        event.preventDefault()
-        setOpen((v) => !v)
-      }
+      if (event.key !== '`') return
+      // Ignore Cmd/Ctrl/Alt+` (browser/OS shortcuts) and key-repeat from a
+      // held key, which would otherwise flicker the panel open/closed.
+      if (event.metaKey || event.ctrlKey || event.altKey || event.repeat) return
+      event.preventDefault()
+      setOpen((v) => !v)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -97,6 +117,9 @@ export function ControlPanel({
           value={PALETTE_NAMES.find((n) => PALETTES[n].join() === config.palette.join()) ?? ''}
           onChange={(e) => {
             const name = e.target.value as PaletteName
+            // "custom" (value="") is a display-only state; selecting it must
+            // be inert, not throw — PALETTES[''] is undefined.
+            if (!name || !(name in PALETTES)) return
             const palette = [...PALETTES[name]]
             onChange({ palette, bandCount: Math.min(config.bandCount, palette.length) })
           }}
@@ -112,15 +135,18 @@ export function ControlPanel({
       </label>
 
       <div className="mb-3 flex gap-1">
-        {config.palette.slice(0, config.bandCount).map((hex, i) => (
+        {/* One swatch per stop the engine actually samples (resampleIndices),
+            not the first bandCount raw stops — those can differ once
+            paletteToFloat32 resamples across the full ramp. */}
+        {resampleIndices(config.palette.length, config.bandCount).map((sourceIndex, i) => (
           <input
             key={i}
             type="color"
-            value={hex}
-            aria-label={`Palette stop ${i + 1}`}
+            value={config.palette[sourceIndex]}
+            aria-label={`Palette stop ${i + 1} of ${config.bandCount}`}
             onChange={(e) => {
               const palette = [...config.palette]
-              palette[i] = e.target.value.toUpperCase()
+              palette[sourceIndex] = e.target.value.toUpperCase()
               onChange({ palette })
             }}
             className="h-7 w-full cursor-pointer rounded border border-white/20 bg-transparent"
@@ -132,14 +158,15 @@ export function ControlPanel({
         <label key={key} className="mb-2 block">
           <span className="flex justify-between text-white/50">
             {label}
-            <span className="text-white/80">{Number(config[key]).toFixed(step < 1 ? 3 : 0)}</span>
+            <span className="text-white/80">{Number(config[key]).toFixed(decimalsForStep(step))}</span>
           </span>
           <input
             type="range"
             min={min}
-            // resolveConfig clamps bandCount to the palette length, so a static
-            // max of 6 would leave the slider visually stuck on shorter palettes.
-            max={key === 'bandCount' ? config.palette.length : max}
+            // resolveConfig clamps bandCount to min(MAX_PALETTE_STOPS,
+            // palette.length), so a static max of 6 would leave the slider
+            // visually stuck on shorter palettes (and wrong again above 6).
+            max={key === 'bandCount' ? Math.min(MAX_PALETTE_STOPS, config.palette.length) : max}
             step={step}
             value={Number(config[key])}
             onChange={(e) => onChange({ [key]: Number(e.target.value) } as Partial<DitherConfig>)}

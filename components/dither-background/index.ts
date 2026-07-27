@@ -1,6 +1,6 @@
 export { DitherBackground, default } from './dither-background'
 export type { DitherBackgroundProps } from './dither-background'
-export { DEFAULT_CONFIG, MAX_PALETTE_STOPS, resolveConfig } from './config'
+export { DEFAULT_CONFIG, MAX_PALETTE_STOPS, resampleIndices, resolveConfig } from './config'
 export type { DitherConfig, DitherConfigInput } from './config'
 export { PALETTES, PALETTE_NAMES } from './palettes'
 export type { PaletteName } from './palettes'
