@@ -145,15 +145,18 @@ Seven stages:
    real halftone print's lightest areas are paper plus sparse ink, never pure
    paper.
 6. **Fused ordered dither + palette quantization.** These are one operation, not
-   two sequential ones:
+   two sequential ones — scaled by `uBandCount`, the number of *active* palette
+   stops (2–6, resolved by `resolveConfig`), **not** by `MAX_PALETTE_STOPS`
+   (a fixed 6 — just the size of the `uPalette` uniform array, unrelated to how
+   many of its entries are actually in play for a given render):
 
    ```glsl
-   float v = value * float(MAX_PALETTE_STOPS - 1);
+   float v = value * float(uBandCount - 1);
    int   i = int(floor(v));
    float f = fract(v);
    vec3 color = f < bayer8(gl_FragCoord.xy / cellSize)
-              ? palette[i]
-              : palette[i + 1];
+              ? uPalette[i]
+              : uPalette[i + 1];
    ```
 
    Regions well inside a band come out solid. Regions near a boundary become a

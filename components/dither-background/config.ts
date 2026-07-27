@@ -25,7 +25,11 @@ export type DitherConfig = {
   contrastLow: number
   /** Upper edge of the contrast remap window. */
   contrastHigh: number
-  /** Amplitude of the per-pixel grain pass. */
+  /**
+   * Amplitude of the grain pass, sampled once per halftone cell (not per
+   * pixel) — per-pixel grain would speckle the inside of every dot and undo
+   * the flat-cell halftone the shader otherwise produces.
+   */
   grain: number
 }
 

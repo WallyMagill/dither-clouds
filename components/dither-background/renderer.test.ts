@@ -318,6 +318,24 @@ describe('createRenderer', () => {
     expect(renderer.running).toBe(false)
   })
 
+  test('start() during a context loss records intent, so a later restore resumes', () => {
+    // Sequence under test: context lost while running -> the visibility/
+    // intersection gate toggles off then back on, calling stop() then
+    // start() while still lost -> start() must not silently no-op, or the
+    // restore handler sees wasRunningBeforeLoss=false and draws one static
+    // frame instead of resuming the loop.
+    const canvas = createFakeCanvas(createFakeGl())
+    const renderer = createRenderer(canvas)!
+    renderer.start()
+
+    fireContextLost(canvas)
+    renderer.stop()
+    renderer.start()
+
+    fireContextRestored(canvas)
+    expect(renderer.running).toBe(true)
+  })
+
   test('restore stays stopped and draws exactly once if it was stopped at the moment of loss', () => {
     const canvas = createFakeCanvas(createFakeGl())
     const renderer = createRenderer(canvas)!

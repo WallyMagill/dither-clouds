@@ -268,7 +268,16 @@ export function createRenderer(
     },
 
     start() {
-      if (running || destroyed || contextLost) return
+      if (running || destroyed) return
+      if (contextLost) {
+        // The intent to run must survive the loss: the shell may call stop()
+        // while the context is still lost (e.g. the visibility/intersection
+        // gate toggling off then back on), and without recording this here the
+        // restore handler would see wasRunningBeforeLoss=false and draw a
+        // single static frame instead of resuming the loop.
+        wasRunningBeforeLoss = true
+        return
+      }
       running = true
       lastTimestamp = null
       frame = requestAnimationFrame(tick)

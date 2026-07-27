@@ -86,19 +86,23 @@ top-level `index.ts` (which re-exports the `'use client'` React component), to
 lift the rendering engine into a non-React project:
 
 ```ts
-import { createRenderer, resolveConfig } from '@/components/dither-background/engine'
+import { createRenderer } from '@/components/dither-background/engine'
 
-const renderer = createRenderer(canvasEl, resolveConfig({ speed: 0.2 }))
+const renderer = createRenderer(canvasEl, { speed: 0.2 })
 if (renderer) {
   renderer.start()
   // renderer.setConfig(...), renderer.resize(...), renderer.destroy(), ...
 }
 ```
 
-`createRenderer` returns `null` — never throws — if WebGL2 is unavailable or
-the config is invalid; that's the same fallback contract `<DitherBackground>`
-relies on. `fallbackGradient` (exported from `index.ts`) builds the matching
-CSS gradient string, for an SSR placeholder or a manual fallback.
+`createRenderer` takes a raw `DitherConfigInput` and resolves it internally, so
+there's no need to call `resolveConfig` first. `createRenderer` returns
+`null` — never throws — if WebGL2 is unavailable or the config is invalid;
+that's the same fallback contract `<DitherBackground>` relies on.
+`fallbackGradient` (exported from `index.ts`) builds the matching CSS gradient
+string, for an SSR placeholder or a manual fallback — though note that
+`index.ts` is the React barrel, so importing from it re-introduces the React
+dependency this section exists to avoid.
 
 ## Testing
 
