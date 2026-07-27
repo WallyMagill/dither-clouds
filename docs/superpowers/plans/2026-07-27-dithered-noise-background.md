@@ -179,9 +179,10 @@ describe('resolveConfig', () => {
     expect(c.noiseScale).toBe(DEFAULT_CONFIG.noiseScale)
   })
 
-  test('clamps bandCount into 2..MAX_PALETTE_STOPS', () => {
+  test('clamps bandCount into 2..palette length', () => {
     expect(resolveConfig({ bandCount: 0 }).bandCount).toBe(2)
-    expect(resolveConfig({ bandCount: 99 }).bandCount).toBe(MAX_PALETTE_STOPS)
+    // The default palette has 4 stops, so 4 — not MAX_PALETTE_STOPS — is the ceiling.
+    expect(resolveConfig({ bandCount: 99 }).bandCount).toBe(4)
   })
 
   test('clamps ditherStrength into 0..1', () => {
@@ -193,8 +194,12 @@ describe('resolveConfig', () => {
     expect(resolveConfig({ cellSize: 0 }).cellSize).toBe(1)
   })
 
-  test('rejects a palette shorter than bandCount', () => {
-    expect(() => resolveConfig({ palette: ['#000000'], bandCount: 4 })).toThrow()
+  test('clamps bandCount down to the palette length', () => {
+    expect(resolveConfig({ palette: ['#FFFFFF', '#000000'], bandCount: 4 }).bandCount).toBe(2)
+  })
+
+  test('throws on a palette with fewer than 2 stops', () => {
+    expect(() => resolveConfig({ palette: ['#000000'] })).toThrow()
   })
 
   test('defaults match the spec measurements', () => {
@@ -303,15 +308,18 @@ function clamp(value: number, min: number, max: number): number {
 
 export function resolveConfig(input: DitherConfigInput = {}): DitherConfig {
   const merged = { ...DEFAULT_CONFIG, ...input }
-  const bandCount = Math.round(clamp(merged.bandCount, 2, MAX_PALETTE_STOPS))
 
-  if (merged.palette.length < bandCount) {
-    throw new Error(
-      `Palette has ${merged.palette.length} stop(s) but bandCount is ${bandCount}. ` +
-        `Provide at least ${bandCount} stops.`,
-    )
+  // A single color cannot make a ramp, so that alone is fatal. Anything else
+  // out of range clamps rather than throwing: this is a background, and the
+  // spec requires it never throw and never render blank. Crashing a page over
+  // bandCount: 5 on a 4-stop palette is the wrong failure mode.
+  if (merged.palette.length < 2) {
+    throw new Error(`Palette needs at least 2 stops, received ${merged.palette.length}.`)
   }
   for (const stop of merged.palette) hexToVec3(stop)
+
+  const maxBands = Math.min(MAX_PALETTE_STOPS, merged.palette.length)
+  const bandCount = Math.round(clamp(merged.bandCount, 2, maxBands))
 
   return {
     ...merged,
@@ -1922,6 +1930,7 @@ type Slider = {
 }
 
 const SLIDERS: Slider[] = [
+  // bandCount's max is overridden per-render to config.palette.length.
   { key: 'bandCount', label: 'Bands', min: 2, max: 6, step: 1 },
   { key: 'cellSize', label: 'Cell size (px)', min: 1, max: 16, step: 1 },
   { key: 'ditherStrength', label: 'Dither strength', min: 0, max: 1, step: 0.01 },
@@ -2031,7 +2040,9 @@ export function ControlPanel({
           <input
             type="range"
             min={min}
-            max={max}
+            // resolveConfig clamps bandCount to the palette length, so a static
+            // max of 6 would leave the slider visually stuck on shorter palettes.
+            max={key === 'bandCount' ? config.palette.length : max}
             step={step}
             value={Number(config[key])}
             onChange={(e) => onChange({ [key]: Number(e.target.value) } as Partial<DitherConfig>)}
