@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { shouldAnimate } from './animation-gate'
-import { type DitherConfigInput, DEFAULT_CONFIG } from './config'
+import { type DitherConfigInput, DEFAULT_CONFIG, hexToVec3 } from './config'
 import { type DitherRenderer, createRenderer } from './renderer'
 import { normalizePointer } from './viewport'
 
@@ -13,12 +13,26 @@ export type DitherBackgroundProps = {
   paused?: boolean
 }
 
+/**
+ * A palette usable by the CSS fallback: at least 2 stops, all valid hex.
+ * Anything less can't make a ramp — the same condition that makes
+ * `createRenderer` return `null` — so this is the one case where the
+ * fallback itself must not depend on the caller's palette.
+ */
+function isUsablePalette(palette: string[] | undefined): palette is string[] {
+  if (!palette || palette.length < 2) return false
+  try {
+    for (const stop of palette) hexToVec3(stop)
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Endpoint colors of the default palette, used for the no-WebGL fallback. */
 export function fallbackGradient(config?: DitherConfigInput): string {
-  // A palette with fewer than 2 stops can't make a ramp (and is exactly the
-  // input that makes createRenderer return null), so this is the one case
-  // where the fallback itself must not depend on the caller's palette.
-  const palette = config?.palette && config.palette.length >= 2 ? config.palette : DEFAULT_CONFIG.palette
+  const candidate = config?.palette
+  const palette = isUsablePalette(candidate) ? candidate : DEFAULT_CONFIG.palette
   const light = palette[0]
   const dark = palette[palette.length - 1]
   return `linear-gradient(160deg, ${light} 0%, ${dark} 100%)`
@@ -112,7 +126,9 @@ export function DitherBackground({ config, className, paused = false }: DitherBa
     reduceMotion.addEventListener('change', onMotionChange)
     window.addEventListener('pointermove', onPointerMove, { passive: true })
     // pointerleave does not bubble, so a window listener never fires for an
-    // event targeted at a descendant. document still sees it via capture.
+    // event targeted at a descendant — but it is dispatched individually at
+    // every ancestor the pointer exits, document included, so document sees
+    // it regardless.
     document.addEventListener('pointerleave', onPointerLeave, { passive: true })
 
     return () => {
@@ -124,6 +140,10 @@ export function DitherBackground({ config, className, paused = false }: DitherBa
       intersectionObserver.disconnect()
       renderer.destroy()
       rendererRef.current = null
+      // Otherwise this would keep closing over the destroyed renderer;
+      // every call it could make is already guarded by `destroyed` inside
+      // renderer.ts, but that guarantee shouldn't have to be borrowed.
+      updateLoopRef.current = () => {}
       setRendererReady(false)
     }
     // `config` is read once, at construction; `paused` is read through
