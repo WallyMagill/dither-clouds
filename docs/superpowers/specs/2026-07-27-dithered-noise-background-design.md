@@ -51,6 +51,11 @@ along horizontal scanlines, measured at y=0.05 and y=0.85 of an 811px-wide
 image). Cell ≈ 0.4% of image width → roughly 4–6px on a typical viewport. The
 grid is fine and dense, not chunky.
 
+**Shipped default: `cellSize: 8`, in device pixels.** At the DPR-2 cap that is
+4 CSS px, or ~0.33% of a 1200px viewport against the reference's ~0.37% — the
+same rendered pitch. The number differs from the measurement above only because
+the config is expressed in device pixels; see the note in `config.test.ts`.
+
 ### Palette (default)
 
 ```

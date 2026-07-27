@@ -34,16 +34,16 @@ export type DitherConfigInput = Partial<DitherConfig>
 export const DEFAULT_CONFIG: DitherConfig = {
   palette: ['#C4C3B8', '#B8B7AE', '#1A2121', '#03000A'],
   bandCount: 4,
-  cellSize: 4,
+  cellSize: 8,
   ditherStrength: 1,
-  noiseScale: 2.2,
-  warpStrength: 4,
-  warpDetail: 4,
+  noiseScale: 1.5,
+  warpStrength: 0.85,
+  warpDetail: 0.9,
   speed: 0.08,
   pointerStrength: 0.6,
   pointerEase: 0.04,
-  contrastLow: 0.32,
-  contrastHigh: 0.68,
+  contrastLow: 0.29,
+  contrastHigh: 0.71,
   grain: 0.02,
 }
 

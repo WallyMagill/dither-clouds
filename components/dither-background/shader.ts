@@ -67,7 +67,12 @@ const float BAYER[${BAYER_8.length}] = float[${BAYER_8.length}](${bayerLiteral})
 // the palette bands never separate. This gain expands the field to span roughly
 // 0..1 before the contrast window shapes it, which is what gives uContrastLow/High
 // meaningful travel instead of crowding all the useful range into a few slider steps.
-const float FIELD_GAIN = 4.0;
+const float FIELD_GAIN = 1.05;
+
+// How far the tonal range is inset from pure 0 and 1. See the use site in
+// main() — this is what keeps a minimum dot density in the lightest and darkest
+// regions instead of letting them go flat.
+const float TONE_HEADROOM = 0.07;
 
 // ---------------------------------------------------------------------------
 // Simplex noise (Ashima Arts / Stefan Gustavson, MIT). 3D so that time can be
@@ -195,9 +200,18 @@ float hash12(vec2 p) {
 }
 
 void main() {
+  // Snap to the centre of the halftone cell before sampling the field, so the
+  // field is evaluated once per cell rather than once per pixel. Both the field
+  // and the Bayer threshold are then constant across a cell, which makes every
+  // cell a single flat dot — a real halftone. Sampling per pixel instead lets
+  // the band comparison flip inside a cell, which produces sub-cell detail and
+  // reads as a dithered photograph: shape edges come out smooth instead of
+  // stepping along the dot grid the way printed halftone does.
+  vec2 cellCoord = (floor(gl_FragCoord.xy / uCellSize) + 0.5) * uCellSize;
+
   // Aspect-corrected, centered coordinates so the field does not stretch on
   // resize. Dividing both axes by the same scalar preserves circles.
-  vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution) / max(uResolution.x, uResolution.y);
+  vec2 uv = (cellCoord - 0.5 * uResolution) / max(uResolution.x, uResolution.y);
 
   float field = warpedField(uv, uTime);
 
@@ -205,6 +219,15 @@ void main() {
   // resolves into confident islands of light and dark rather than mush.
   float v = clamp(field * FIELD_GAIN * 0.5 + 0.5, 0.0, 1.0);
   v = smoothstep(uContrastLow, uContrastHigh, v);
+
+  // smoothstep saturates to exactly 0.0 and 1.0, and a value sitting exactly on
+  // a palette stop has no fractional part left for the dither threshold to act
+  // on — so the extremes come out perfectly flat. Real halftone print never does
+  // that: its lightest areas are paper plus sparse ink, and its darkest are ink
+  // plus sparse gaps. Insetting the range keeps a minimum dot density at both
+  // ends, which is what makes the whole field read as printed rather than as a
+  // posterized photo with clean edges.
+  v = mix(TONE_HEADROOM, 1.0 - TONE_HEADROOM, v);
 
   // Fused ordered dither + palette quantization. Regions well inside a band
   // come out solid; regions near a boundary become a checkerboard of the two
@@ -224,7 +247,9 @@ void main() {
 
   // Low-amplitude grain: sells the risograph feel and suppresses banding in
   // flat regions. Offset by time so it shimmers rather than sitting static.
-  float grain = hash12(gl_FragCoord.xy + fract(uTime) * 137.0) - 0.5;
+  // Per cell, not per pixel — per-pixel grain would speckle the inside of every
+  // dot and undo the flat-cell halftone above.
+  float grain = hash12(cellCoord + fract(uTime) * 137.0) - 0.5;
   color += grain * uGrain;
 
   fragColor = vec4(clamp(color, 0.0, 1.0), 1.0);

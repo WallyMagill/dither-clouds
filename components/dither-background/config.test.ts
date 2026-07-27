@@ -98,7 +98,11 @@ describe('resolveConfig', () => {
 
   test('defaults match the spec measurements', () => {
     expect(DEFAULT_CONFIG.bandCount).toBe(4)
-    expect(DEFAULT_CONFIG.cellSize).toBe(4)
+    // 8 DEVICE px, which is 4 CSS px at the dpr-2 cap. The reference measured a
+    // 3-4px pitch on an 811px-wide image (~0.37% of width); 4 CSS px on a
+    // 1200px viewport is ~0.33%. The apparent discrepancy with the spec's "4"
+    // is only device-vs-CSS pixels — the rendered pitch matches the measurement.
+    expect(DEFAULT_CONFIG.cellSize).toBe(8)
     expect(DEFAULT_CONFIG.palette.slice(0, 4)).toEqual([
       '#C4C3B8',
       '#B8B7AE',
