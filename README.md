@@ -1,10 +1,22 @@
 # Dithered Noise Background
 
-A fullscreen animated WebGL2 background: domain-warped simplex noise,
-quantized to a small muted palette, rendered through a screen-space
-ordered-dither halftone grid. The result reads as posterized fluid noise —
-organic folding cloud shapes broken into a fine dot grid, like newsprint or
-risograph print.
+A fullscreen animated WebGL2 background: drifting cumulus cloud masses,
+quantized to a small muted palette and rendered through a screen-space
+ordered-dither halftone grid — like an editorial screen print or risograph.
+
+The cloud shape comes from three things working together, and losing any one of
+them makes it read as fluid or smoke instead:
+
+- **A low `noiseScale`** so the frame holds a few large masses rather than many
+  small ones.
+- **Billow detail (`warpDetail`) on the boundary.** `abs(noise)` is convex
+  almost everywhere, so it pushes cloud edges outward into rounded cauliflower
+  scallops. Ordinary fbm curves inward and outward equally, which reads as flow.
+  Billow belongs on the *boundary*: driving the whole density from it makes its
+  zero-crossing creases dominate and the warp stretches them into veins.
+- **Two decks combined with a smooth max**, so one cloud occludes another and
+  the sky has depth. A plain `max()` leaves C0 creases along every crossing
+  curve, and the warp pulls those into tendrils.
 
 It never throws and never leaves a blank canvas: if WebGL2 is unavailable, a
 shader fails to compile/link, or the config turns out to be invalid, the
@@ -58,14 +70,14 @@ See `components/dither-background/config.ts` for the full JSDoc.
 | `bandCount` | `5` | Number of active palette stops. Clamped to `2..min(MAX_PALETTE_STOPS, palette.length)`. |
 | `cellSize` | `8` | Halftone cell edge length, in **device** pixels. |
 | `ditherStrength` | `1` | How far the Bayer threshold deviates from 0.5. `0` = hard posterize with no dot texture. |
-| `noiseScale` | `1.2` | Base frequency of the noise field. Past ~2 the forms get small enough to read as camouflage rather than clouds. |
-| `warpStrength` | `0.75` | Strength of the first domain-warp level. Past ~1.5 the forms shear into marbling. |
-| `warpDetail` | `0.45` | Strength of the second domain-warp level. |
+| `noiseScale` | `1.0` | Base frequency of the cloud field. Lower = fewer, larger masses. |
+| `warpStrength` | `0.55` | How far the domain warp slides the cloud masses around. Past ~1.5 they shear into marbling. |
+| `warpDetail` | `0.55` | Billow detail on the cloud boundary — this is what scallops edges into cauliflower lobes. At `0` the edges curve smoothly and read as fluid, not cloud. |
 | `speed` | `0.08` | Animation rate along the noise z axis. |
 | `pointerStrength` | `0.6` | How far the pointer bends the fold pattern. `0` disables pointer input. |
 | `pointerEase` | `0.04` | Easing factor applied to pointer motion per frame, `(0..1]`. Floored at `0.001` — exactly `0` would freeze the pointer permanently. |
-| `contrastLow` | `0.38` | Lower edge of the contrast remap window. |
-| `contrastHigh` | `0.66` | Upper edge of the contrast remap window. |
+| `contrastLow` | `0.30` | Lower edge of the contrast remap window. |
+| `contrastHigh` | `0.72` | Upper edge of the contrast remap window. |
 | `grain` | `0.02` | Amplitude of the per-cell grain pass. |
 
 `bandCount` below `palette.length` resamples the ramp rather than truncating

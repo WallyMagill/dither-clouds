@@ -154,12 +154,35 @@ Seven stages:
    Scrolling a 2D field reads as sliding wallpaper; drifting through z reads as
    clouds forming and dissolving. This is the difference between "moving" and
    "fluid".
-3. **fbm** — 4 octaves, lacunarity 2.0, gain 0.5.
-4. **Two-level domain warp** (Iñigo Quilez construction): fbm feeding the
-   coordinates of fbm feeding the coordinates of fbm. Produces curling, folding
-   contours rather than round blobs. The eased pointer vector is injected into
-   the **second** warp offset, so the fold pattern bends near the cursor instead
-   of the whole image translating.
+3. **fbm** — 4 octaves, lacunarity 2.0, gain 0.5. Big masses come from a low
+   `noiseScale`; bumpy edges come from octave depth. Those are separate
+   controls, and conflating them once cost a revision: cutting octaves to fight
+   a "camouflage" reading caused by a high `noiseScale` also removed the
+   fractal detail that makes a cloud edge look like cauliflower.
+4. **Domain warp**, driven by smooth fbm, sliding the masses around. The eased
+   pointer vector is injected into the warp offset rather than the base
+   coordinate, so the cloud edges bend near the cursor instead of the whole sky
+   translating. The warp is deliberately *not* driven by billow — distorting
+   with billow folds the distortion itself and creases the lobes.
+5. **Cloud construction — two decks and a scalloped boundary.** This is where
+   the shape stops being fluid and starts being cloud, and each half is
+   load-bearing:
+   - Two fbm decks at different scales are combined with a **smooth** max
+     (`smax`, blend width 0.12), so the nearer deck occludes the farther one and
+     the sky gains depth. A plain `max()` is only C0 continuous: along the curve
+     where the decks cross it leaves a crease, and the warp stretches those
+     creases into thin tendrils that read as smoke. Averaging instead of
+     max-ing dissolves both decks into uniform haze.
+   - **Billow** (`abs(noise)`, normalised by the amplitude sum) is added to the
+     boundary. `|noise|` is convex almost everywhere, so it pushes cloud edges
+     outward into rounded cauliflower scallops, where ordinary fbm curves inward
+     and outward equally and reads as flow. It must stay a *boundary
+     perturbation*: driving the whole density from billow makes its
+     zero-crossing creases the dominant structure and the warp pulls them into
+     veins — tried, and visibly wrong. Frequency matters as much as amplitude;
+     much above ~2× the base it adds wisps rather than scallops.
+   - Density is then **inverted** so dense cloud takes the palette's cream end
+     and open sky takes its navy end.
 5. **Field-gain expansion, contrast remap, tone-headroom inset.** fbm's output is
    statistically far narrower than its nominal -1..1 range (RMS ≈ 0.11 at 4
    octaves / gain 0.5), so a constant `FIELD_GAIN` (1.05) expands it first —

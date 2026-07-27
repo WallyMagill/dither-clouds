@@ -85,11 +85,11 @@ describe('fragment shader', () => {
   })
 
   test('applies a field gain before the contrast window', () => {
-    // fbm's RMS is far narrower than its theoretical -1..1 range; without a
-    // gain the field maps to a narrow band around 0.5 and the palette bands
-    // never separate. This guards against silently reverting that fix.
+    // Cloud density clusters in a narrow band around its midpoint; without a
+    // gain the palette stops never separate. This guards against silently
+    // reverting that fix.
     expect(frag).toContain('const float FIELD_GAIN')
-    expect(frag).toMatch(/field \* FIELD_GAIN \* 0\.5 \+ 0\.5/)
+    expect(frag).toMatch(/1\.0 - density - 0\.5\) \* FIELD_GAIN \+ 0\.5/)
   })
 
   test('scales the pointer bend by a radial falloff in uv space', () => {
@@ -97,5 +97,27 @@ describe('fragment shader', () => {
     // re-shuffles the whole fold pattern instead of bending it locally.
     expect(frag).toContain('pointerFalloff')
     expect(frag).toMatch(/exp\(-4\.0 \* length\(uv - pointerUv\)\)/)
+  })
+
+  test('billow folds the noise with abs() to make convex lobes', () => {
+    // |noise| is what turns smooth waves into outward-bulging cloud lobes.
+    // Dropping the abs() silently turns billow back into ordinary fbm and the
+    // cloud edges go smooth — indistinguishable from fluid.
+    expect(frag).toMatch(/sum \+= amp \* abs\(snoise\(p \* freq\)\)/)
+  })
+
+  test('combines the two cloud decks with a smooth max, never a plain max', () => {
+    // A plain max() is only C0 continuous: the curve where the decks cross
+    // leaves a crease, and the domain warp stretches those creases into thin
+    // tendrils that read as smoke rather than cloud. This was a real defect.
+    expect(frag).toContain('float smax(')
+    expect(frag).toMatch(/smax\(deckNear, deckFar/)
+    expect(frag).not.toMatch(/=\s*max\(deckNear/)
+  })
+
+  test('inverts density so dense cloud takes the palette light stop', () => {
+    // Clouds are the cream end and open sky is the navy end. Losing the
+    // inversion flips the whole image without failing any structural test.
+    expect(frag).toMatch(/1\.0 - density/)
   })
 })

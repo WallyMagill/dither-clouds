@@ -9,11 +9,15 @@ export type DitherConfig = {
   cellSize: number
   /** How far the Bayer threshold deviates from 0.5. 0 = hard posterize. */
   ditherStrength: number
-  /** Base frequency of the noise field. */
+  /** Base frequency of the cloud field. Lower = fewer, larger cloud masses. */
   noiseScale: number
-  /** Strength of the first domain-warp level. */
+  /** How far the domain warp slides the cloud masses around. */
   warpStrength: number
-  /** Strength of the second domain-warp level. */
+  /**
+   * Amount of billow detail added to the cloud boundary. This is what scallops
+   * the edges into rounded cauliflower lobes; at 0 the boundaries curve
+   * smoothly and the result reads as fluid rather than as cloud.
+   */
   warpDetail: number
   /** Animation rate along the noise z axis. */
   speed: number
@@ -42,11 +46,11 @@ export const DEFAULT_CONFIG: DitherConfig = {
   ditherStrength: 1,
   // Large, slow, atmospheric masses — a few cloud forms across the frame rather
   // than many small ones. Raising this past ~0.6 starts reading as camouflage.
-  noiseScale: 1.2,
+  noiseScale: 1.0,
   // Gentle warping only. Enough to make the boundaries irregular and slowly
   // curving; past ~1.5 the forms shear into marbling.
-  warpStrength: 0.75,
-  warpDetail: 0.45,
+  warpStrength: 0.55,
+  warpDetail: 0.55,
   speed: 0.08,
   pointerStrength: 0.6,
   pointerEase: 0.04,
@@ -54,8 +58,8 @@ export const DEFAULT_CONFIG: DitherConfig = {
   // evenly over the canvas; pushing the window up leaves broad pale areas as
   // the default state and concentrates the darks into a few dramatic voids,
   // which is what gives the composition hierarchy and breathing room.
-  contrastLow: 0.38,
-  contrastHigh: 0.66,
+  contrastLow: 0.30,
+  contrastHigh: 0.72,
   grain: 0.02,
 }
 // Frozen so the singleton a consumer imports and touches directly can't be

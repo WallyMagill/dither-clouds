@@ -30,11 +30,13 @@ void main() {
 }
 `
 
-// 3 octaves, not 4. The top octave of a 4-octave fbm adds fine detail across the
-// whole field, which at this scale reads as camouflage speckle competing with the
-// halftone rather than as cloud structure. Three keeps the forms broad and soft
-// while still giving the boundaries irregular, slowly-curving edges.
-export function buildFragmentShader(octaves = 3): string {
+// Octave count applies to both the smooth fbm and the billow detail. Four is a
+// deliberate balance: the earlier "camouflage" reading came from a high
+// noiseScale, not from octave depth, and cutting octaves to fight it also
+// removed the fractal detail that makes a cloud edge look like cauliflower
+// rather than like a smooth fluid front. Big masses come from a LOW noiseScale;
+// bumpy edges come from octave depth. They are separate controls.
+export function buildFragmentShader(octaves = 4): string {
   if (!Number.isInteger(octaves) || octaves < 1 || octaves > 8) {
     throw new Error(`Octave count must be an integer in 1..8, received ${octaves}`)
   }
@@ -71,12 +73,13 @@ const float BAYER[${BAYER_8.length}] = float[${BAYER_8.length}](${bayerLiteral})
 // the palette bands never separate. This gain expands the field to span roughly
 // 0..1 before the contrast window shapes it, which is what gives uContrastLow/High
 // meaningful travel instead of crowding all the useful range into a few slider steps.
-const float FIELD_GAIN = 3.0;
+const float FIELD_GAIN = 1.75;
 
 // How far the tonal range is inset from pure 0 and 1. See the use site in
 // main() — this is what keeps a minimum dot density in the lightest and darkest
 // regions instead of letting them go flat.
 const float TONE_HEADROOM = 0.07;
+
 
 // ---------------------------------------------------------------------------
 // Simplex noise (Ashima Arts / Stefan Gustavson, MIT). 3D so that time can be
@@ -157,17 +160,46 @@ float fbm(vec3 p) {
   return sum;
 }
 
-// Two-level domain warp (Inigo Quilez construction): fbm feeding the
-// coordinates of fbm feeding the coordinates of fbm. This is what produces
-// curling, folding contours rather than round blobs.
+// Billow noise. Taking the absolute value folds the field at every zero
+// crossing, so smooth waves become rounded, outward-bulging lobes. That fold is
+// the whole difference between a cumulus puff and a fluid swirl: plain fbm
+// curves inward and outward equally, which reads as flow, while |noise| is
+// convex almost everywhere, which reads as billowing mass. Normalised by the
+// amplitude sum so the result is a predictable 0..1 density.
+float billow(vec3 p) {
+  float sum = 0.0;
+  float amp = 0.5;
+  float freq = 1.0;
+  float norm = 0.0;
+  for (int i = 0; i < ${octaves}; i++) {
+    sum += amp * abs(snoise(p * freq));
+    norm += amp;
+    freq *= 2.0;   // lacunarity
+    amp  *= 0.5;   // gain
+  }
+  return sum / norm;
+}
+
+// Smooth maximum. A plain max() of two fields is only C0 continuous: along the
+// curve where they cross it leaves a hard crease, and the domain warp stretches
+// those creases into thin tendrils that read as smoke. Blending across a band of
+// width k keeps the occlusion (the nearer deck still wins) without the seam.
+float smax(float a, float b, float k) {
+  float h = clamp(0.5 + 0.5 * (a - b) / k, 0.0, 1.0);
+  return mix(b, a, h) + k * h * (1.0 - h);
+}
+
+// Cloud density in 0..1, high where cloud is.
 //
-// The pointer is injected into the SECOND warp offset only, scaled by a
-// radial falloff around the cursor. Adding it to the base coordinate would
-// translate the whole image; adding it here with falloff bends the fold
-// pattern locally around the cursor, which is the intended effect.
-float warpedField(vec2 uv, float t) {
+// The pointer is injected into the warp offset rather than the base coordinate,
+// scaled by a radial falloff around the cursor. Adding it to the base would
+// translate the whole sky; adding it here bends the cloud edges locally.
+float cloudDensity(vec2 uv, float t) {
   vec3 p = vec3(uv * uNoiseScale, t);
 
+  // The warp is driven by SMOOTH fbm, not billow. Distorting with billow would
+  // fold the distortion itself and crease the lobes; smooth distortion slides
+  // them around and keeps their edges irregular without breaking them up.
   vec2 q = vec2(
     fbm(p),
     fbm(p + vec3(5.2, 1.3, 0.0))
@@ -180,12 +212,29 @@ float warpedField(vec2 uv, float t) {
   float pointerFalloff = exp(-4.0 * length(uv - pointerUv));
   vec2 pointerBend = uPointer * uPointerStrength * pointerFalloff;
 
-  vec2 r = vec2(
-    fbm(p + vec3(uWarpStrength * q + vec2(1.7, 9.2), 0.15 * t)),
-    fbm(p + vec3(uWarpStrength * q + vec2(8.3, 2.8) + pointerBend, 0.126 * t))
-  );
+  vec3 warped = p + vec3(uWarpStrength * q + pointerBend, 0.15 * t);
 
-  return fbm(p + vec3(uWarpDetail * r, 0.0));
+  // Two cloud decks at different scales, combined with max() rather than a
+  // blend or a sum. Where both have mass the nearer one simply wins, which is
+  // what occlusion looks like — one cloud passing in front of another, giving
+  // depth. Averaging them instead dissolves both into a single uniform haze,
+  // which is the "fluid" reading this is meant to replace.
+  float deckNear = fbm(warped) * 0.5 + 0.5;
+  float deckFar = fbm(warped * 1.55 + vec3(11.3, 5.7, 0.31 * t)) * 0.5 + 0.5;
+  float base = smax(deckNear, deckFar * 0.93, 0.12);
+
+  // Billow detail on top of the smooth base. |noise| is convex almost
+  // everywhere, so adding it pushes the cloud boundary OUTWARD into rounded
+  // scallops rather than letting it curve smoothly like a fluid front. It
+  // belongs here as a perturbation, not as the base field: driving the whole
+  // density from billow makes its zero-crossing creases the dominant structure
+  // and the warp stretches those creases into veins.
+  //
+  // Frequency matters as much as amplitude. Much above ~2x the base it stops
+  // reading as scalloped cloud edge and starts adding wisps.
+  float lobes = billow(warped * 1.8 + vec3(2.7, 8.1, 0.0)) - 0.32;
+
+  return clamp(base + lobes * uWarpDetail, 0.0, 1.0);
 }
 
 // The Bayer threshold is sampled in DEVICE PIXELS from gl_FragCoord and is
@@ -217,11 +266,12 @@ void main() {
   // resize. Dividing both axes by the same scalar preserves circles.
   vec2 uv = (cellCoord - 0.5 * uResolution) / max(uResolution.x, uResolution.y);
 
-  float field = warpedField(uv, uTime);
+  float density = cloudDensity(uv, uTime);
 
-  // fbm output is roughly -1..1; map to 0..1 then push contrast so the field
-  // resolves into confident islands of light and dark rather than mush.
-  float v = clamp(field * FIELD_GAIN * 0.5 + 0.5, 0.0, 1.0);
+  // Invert: dense cloud is LIGHT (the palette's cream end) and open sky is DARK
+  // (its navy end). Then expand around the midpoint — billow output clusters in
+  // a narrow band, so without the gain the palette stops never separate.
+  float v = clamp((1.0 - density - 0.5) * FIELD_GAIN + 0.5, 0.0, 1.0);
   v = smoothstep(uContrastLow, uContrastHigh, v);
 
   // smoothstep saturates to exactly 0.0 and 1.0, and a value sitting exactly on
