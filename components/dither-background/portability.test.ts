@@ -11,7 +11,11 @@ const ENGINE_FILES = ['bayer.ts', 'config.ts', 'palettes.ts', 'renderer.ts', 'sh
 describe('engine portability', () => {
   test('the engine file list matches what is on disk', () => {
     const onDisk = readdirSync(DIR)
-      .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
+      // `index.ts` (Task 8) is the public entry point that re-exports the
+      // React component from `dither-background.tsx` — it is deliberately
+      // not part of the portable engine and is excluded the same way the
+      // `.tsx` file is excluded by the `.ts`-only filter below.
+      .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && f !== 'index.ts')
       .sort()
     expect(onDisk).toEqual([...ENGINE_FILES].sort())
   })
