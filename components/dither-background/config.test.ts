@@ -51,6 +51,33 @@ describe('resolveConfig', () => {
     expect(resolveConfig({ bandCount: 99 }).bandCount).toBe(4)
   })
 
+  test('clamps bandCount to MAX_PALETTE_STOPS even on a longer palette', () => {
+    const long = ['#FFFFFF', '#EEEEEE', '#CCCCCC', '#999999', '#666666', '#333333', '#000000']
+    expect(resolveConfig({ palette: long, bandCount: 7 }).bandCount).toBe(MAX_PALETTE_STOPS)
+  })
+
+  test('coerces NaN to finite in-range values instead of propagating it', () => {
+    const c = resolveConfig({ bandCount: NaN, cellSize: NaN, speed: NaN })
+    expect(Number.isFinite(c.bandCount)).toBe(true)
+    expect(Number.isFinite(c.cellSize)).toBe(true)
+    expect(Number.isFinite(c.speed)).toBe(true)
+    expect(c.bandCount).toBeGreaterThanOrEqual(2)
+    expect(c.cellSize).toBeGreaterThanOrEqual(1)
+    expect(c.speed).toBeGreaterThanOrEqual(0)
+  })
+
+  test('does not alias DEFAULT_CONFIG.palette', () => {
+    const c = resolveConfig()
+    expect(c.palette).not.toBe(DEFAULT_CONFIG.palette)
+    c.palette[0] = '#FF0000'
+    expect(DEFAULT_CONFIG.palette[0]).toBe('#C4C3B8')
+  })
+
+  test('orders an inverted contrast window instead of accepting it', () => {
+    const c = resolveConfig({ contrastLow: 0.9, contrastHigh: 0.1 })
+    expect(c.contrastHigh).toBeGreaterThan(c.contrastLow)
+  })
+
   test('clamps ditherStrength into 0..1', () => {
     expect(resolveConfig({ ditherStrength: -5 }).ditherStrength).toBe(0)
     expect(resolveConfig({ ditherStrength: 5 }).ditherStrength).toBe(1)
@@ -91,8 +118,8 @@ describe('paletteToFloat32', () => {
     expect(Array.from(out.slice(0, 6))).toEqual([1, 1, 1, 0, 0, 0])
   })
 
-  test('pads unused slots with the last active stop', () => {
-    const out = paletteToFloat32(['#FFFFFF', '#000000'], 2)
-    expect(Array.from(out.slice(6, 9))).toEqual([0, 0, 0])
+  test('pads unused slots with the last ACTIVE stop, not the last in the array', () => {
+    const out = paletteToFloat32(['#FFFFFF', '#000000', '#FF0000'], 2)
+    expect(Array.from(out.slice(6, 9))).toEqual([0, 0, 0]) // black, not red
   })
 })

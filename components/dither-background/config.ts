@@ -19,7 +19,7 @@ export type DitherConfig = {
   speed: number
   /** How far the pointer bends the fold pattern. 0 disables pointer input. */
   pointerStrength: number
-  /** Easing factor applied to pointer motion per frame, 0..1. */
+  /** Easing factor applied to pointer motion per frame, (0..1]. Floored at 0.001 rather than 0 — a factor of exactly 0 would freeze the pointer permanently. */
   pointerEase: number
   /** Lower edge of the contrast remap window. */
   contrastLow: number
@@ -59,12 +59,21 @@ export function hexToVec3(hex: string): [number, number, number] {
 }
 
 function clamp(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min
   return Math.min(max, Math.max(min, value))
+}
+
+function atLeast(value: number, min: number): number {
+  return Number.isFinite(value) ? Math.max(min, value) : min
 }
 
 export function resolveConfig(input: DitherConfigInput = {}): DitherConfig {
   const merged = { ...DEFAULT_CONFIG, ...input }
 
+  // A single color cannot make a ramp, so that alone is fatal. Anything else
+  // out of range clamps rather than throwing: this is a background, and the
+  // spec requires it never throw and never render blank. Crashing a page over
+  // bandCount: 5 on a 4-stop palette is the wrong failure mode.
   if (merged.palette.length < 2) {
     throw new Error(
       `Palette needs at least 2 stops, received ${merged.palette.length}.`,
@@ -74,21 +83,24 @@ export function resolveConfig(input: DitherConfigInput = {}): DitherConfig {
 
   const maxBands = Math.min(MAX_PALETTE_STOPS, merged.palette.length)
   const bandCount = Math.round(clamp(merged.bandCount, 2, maxBands))
+  const contrastLow = clamp(merged.contrastLow, 0, 1)
+  const contrastHigh = Math.max(clamp(merged.contrastHigh, 0, 1), contrastLow + 0.001)
 
   return {
     ...merged,
+    palette: [...merged.palette],
     bandCount,
-    cellSize: Math.max(1, merged.cellSize),
+    cellSize: atLeast(merged.cellSize, 1),
     ditherStrength: clamp(merged.ditherStrength, 0, 1),
-    noiseScale: Math.max(0.01, merged.noiseScale),
-    warpStrength: Math.max(0, merged.warpStrength),
-    warpDetail: Math.max(0, merged.warpDetail),
-    speed: Math.max(0, merged.speed),
-    pointerStrength: Math.max(0, merged.pointerStrength),
+    noiseScale: atLeast(merged.noiseScale, 0.01),
+    warpStrength: atLeast(merged.warpStrength, 0),
+    warpDetail: atLeast(merged.warpDetail, 0),
+    speed: atLeast(merged.speed, 0),
+    pointerStrength: atLeast(merged.pointerStrength, 0),
     pointerEase: clamp(merged.pointerEase, 0.001, 1),
-    contrastLow: clamp(merged.contrastLow, 0, 1),
-    contrastHigh: clamp(merged.contrastHigh, 0, 1),
-    grain: Math.max(0, merged.grain),
+    contrastLow,
+    contrastHigh,
+    grain: atLeast(merged.grain, 0),
   }
 }
 
