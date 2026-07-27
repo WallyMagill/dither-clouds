@@ -7,8 +7,8 @@ const frag = buildFragmentShader()
 
 describe('shader sources', () => {
   test('both declare GLSL ES 3.00 on the first line', () => {
-    expect(VERTEX_SHADER.split('\n')[0].trim()).toBe('#version 300 es')
-    expect(frag.split('\n')[0].trim()).toBe('#version 300 es')
+    expect(VERTEX_SHADER.startsWith('#version 300 es')).toBe(true)
+    expect(frag.startsWith('#version 300 es')).toBe(true)
   })
 
   test('no unresolved template placeholders remain', () => {
@@ -35,19 +35,19 @@ describe('fragment shader', () => {
     expect([...declared].sort()).toEqual([...UNIFORM_NAMES].sort())
   })
 
-  test('embeds the full Bayer matrix', () => {
+  test('embeds the full Bayer matrix in order', () => {
+    // A shuffled matrix would still pass a membership check but turns ordered
+    // dither into random noise, so assert the exact joined literal.
     expect(frag).toContain(`float BAYER[${BAYER_8.length}]`)
-    for (const v of BAYER_8) {
-      expect(frag).toContain(v.toFixed(6))
-    }
+    expect(frag).toContain(BAYER_8.map((v) => v.toFixed(6)).join(', '))
   })
 
   test('sizes the palette uniform to MAX_PALETTE_STOPS', () => {
     expect(frag).toMatch(new RegExp(`uniform\\s+vec3\\s+uPalette\\[${MAX_PALETTE_STOPS}\\]`))
   })
 
-  test('embeds the Bayer edge length', () => {
-    expect(frag).toContain(`${BAYER_SIZE}.0`)
+  test('indexes the Bayer array row-major with the correct edge length', () => {
+    expect(frag).toContain(`int(c.y) * ${BAYER_SIZE} + int(c.x)`)
   })
 
   test('samples the dither grid from gl_FragCoord, not from UV', () => {
@@ -82,5 +82,20 @@ describe('fragment shader', () => {
     expect(frag).toMatch(/out\s+vec4\s+(\w+)/)
     const name = /out\s+vec4\s+(\w+)/.exec(frag)![1]
     expect(frag).toContain(`${name} =`)
+  })
+
+  test('applies a field gain before the contrast window', () => {
+    // fbm's RMS is far narrower than its theoretical -1..1 range; without a
+    // gain the field maps to a narrow band around 0.5 and the palette bands
+    // never separate. This guards against silently reverting that fix.
+    expect(frag).toContain('const float FIELD_GAIN')
+    expect(frag).toMatch(/field \* FIELD_GAIN \* 0\.5 \+ 0\.5/)
+  })
+
+  test('scales the pointer bend by a radial falloff in uv space', () => {
+    // Without falloff, uPointer offsets every pixel equally and the pointer
+    // re-shuffles the whole fold pattern instead of bending it locally.
+    expect(frag).toContain('pointerFalloff')
+    expect(frag).toMatch(/exp\(-4\.0 \* length\(uv - pointerUv\)\)/)
   })
 })

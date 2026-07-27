@@ -62,6 +62,13 @@ uniform float uGrain;
 
 const float BAYER[${BAYER_8.length}] = float[${BAYER_8.length}](${bayerLiteral});
 
+// fbm output is statistically much narrower than its theoretical range: 4 octaves
+// at gain 0.5 give an RMS around 0.11, so the raw field maps to v = 0.5 +/- 0.06 and
+// the palette bands never separate. This gain expands the field to span roughly
+// 0..1 before the contrast window shapes it, which is what gives uContrastLow/High
+// meaningful travel instead of crowding all the useful range into a few slider steps.
+const float FIELD_GAIN = 4.0;
+
 // ---------------------------------------------------------------------------
 // Simplex noise (Ashima Arts / Stefan Gustavson, MIT). 3D so that time can be
 // the z axis: drifting through z reads as clouds forming and dissolving, where
@@ -145,9 +152,10 @@ float fbm(vec3 p) {
 // coordinates of fbm feeding the coordinates of fbm. This is what produces
 // curling, folding contours rather than round blobs.
 //
-// The pointer is injected into the SECOND warp offset only. Adding it to the
-// base coordinate would translate the whole image; adding it here bends the
-// fold pattern locally, which is the intended effect.
+// The pointer is injected into the SECOND warp offset only, scaled by a
+// radial falloff around the cursor. Adding it to the base coordinate would
+// translate the whole image; adding it here with falloff bends the fold
+// pattern locally around the cursor, which is the intended effect.
 float warpedField(vec2 uv, float t) {
   vec3 p = vec3(uv * uNoiseScale, t);
 
@@ -156,7 +164,12 @@ float warpedField(vec2 uv, float t) {
     fbm(p + vec3(5.2, 1.3, 0.0))
   );
 
-  vec2 pointerBend = uPointer * uPointerStrength;
+  // uPointer arrives in -1..1 element space; uv is aspect-corrected about the
+  // center. Convert before comparing them, or the falloff centers on the wrong
+  // place on any non-square viewport.
+  vec2 pointerUv = uPointer * 0.5 * uResolution / max(uResolution.x, uResolution.y);
+  float pointerFalloff = exp(-4.0 * length(uv - pointerUv));
+  vec2 pointerBend = uPointer * uPointerStrength * pointerFalloff;
 
   vec2 r = vec2(
     fbm(p + vec3(uWarpStrength * q + vec2(1.7, 9.2), 0.15 * t)),
@@ -190,7 +203,7 @@ void main() {
 
   // fbm output is roughly -1..1; map to 0..1 then push contrast so the field
   // resolves into confident islands of light and dark rather than mush.
-  float v = clamp(field * 0.5 + 0.5, 0.0, 1.0);
+  float v = clamp(field * FIELD_GAIN * 0.5 + 0.5, 0.0, 1.0);
   v = smoothstep(uContrastLow, uContrastHigh, v);
 
   // Fused ordered dither + palette quantization. Regions well inside a band
@@ -205,7 +218,7 @@ void main() {
   float threshold = 0.5 + (bayer(gl_FragCoord.xy, uCellSize) - 0.5) * uDitherStrength;
 
   int idx = int(lower) + (frac < threshold ? 0 : 1);
-  idx = clamp(idx, 0, uBandCount - 1);
+  idx = clamp(idx, 0, min(uBandCount, ${MAX_PALETTE_STOPS}) - 1);
 
   vec3 color = uPalette[idx];
 
