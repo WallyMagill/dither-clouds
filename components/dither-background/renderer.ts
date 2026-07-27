@@ -15,6 +15,10 @@ export type DitherRenderer = {
   readonly running: boolean
 }
 
+// `process` is undefined in an unbundled raw-ESM host. This guard must never
+// throw, including from inside compileShader's "must return null" path.
+const isDev = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
+
 /** Prefixes each source line with its number so driver error logs are actionable. */
 function numberSource(source: string): string {
   return source
@@ -35,7 +39,7 @@ export function compileShader(
   gl.compileShader(shader)
 
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    if (process.env.NODE_ENV !== 'production') {
+    if (isDev) {
       console.error(
         `[dither-background] shader compile failed:\n${gl.getShaderInfoLog(shader)}\n\n${numberSource(source)}`,
       )
@@ -76,7 +80,7 @@ export function linkProgram(
   gl.deleteShader(fragment)
 
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    if (process.env.NODE_ENV !== 'production') {
+    if (isDev) {
       console.error(`[dither-background] program link failed: ${gl.getProgramInfoLog(program)}`)
     }
     gl.deleteProgram(program)
@@ -89,6 +93,21 @@ export function createRenderer(
   canvas: HTMLCanvasElement,
   input: DitherConfigInput = {},
 ): DitherRenderer | null {
+  // Resolve and validate the config BEFORE allocating anything on the GPU.
+  // An invalid palette must fall back to null exactly like a missing WebGL2
+  // context or a shader failure — never propagate as an exception out of
+  // construction, and never leak a linked program/VAO in the process.
+  let config: DitherConfig
+  try {
+    config = resolveConfig(input)
+  } catch (error) {
+    if (isDev) {
+      console.error('[dither-background] invalid config, falling back:', error)
+    }
+    return null
+  }
+  let paletteBuffer = paletteToFloat32(config.palette, config.bandCount)
+
   const gl = canvas.getContext('webgl2', {
     alpha: false,
     antialias: false,
@@ -99,28 +118,39 @@ export function createRenderer(
 
   if (!gl) return null
 
-  const program = linkProgram(gl, VERTEX_SHADER, buildFragmentShader())
-  if (!program) return null
-
-  // Cached once at construction. setConfig must never re-look-up locations —
-  // that is the difference between a slider being free and a slider stalling
-  // the pipeline.
+  // Program, VAO, and every cached uniform location die with the GL context
+  // (webglcontextlost invalidates all of them), so these must be rebuildable
+  // rather than built once. `setConfig` still never re-looks-up a location
+  // or relinks — this only re-runs after an actual context loss.
+  let program: WebGLProgram | null = null
+  let vao: WebGLVertexArrayObject | null = null
   const locations = new Map<string, WebGLUniformLocation | null>()
-  for (const name of UNIFORM_NAMES) {
-    locations.set(name, gl.getUniformLocation(program, name))
-  }
   const at = (name: string) => locations.get(name) ?? null
 
-  // WebGL2 requires a bound VAO even when the shader reads no attributes.
-  const vao = gl.createVertexArray()
+  // Arrow function, not a function declaration: TypeScript does not carry the
+  // `gl` null-narrowing from the early return above into hoisted function
+  // declarations, only into closures defined after the narrowing point.
+  const buildGlResources = (): boolean => {
+    const nextProgram = linkProgram(gl, VERTEX_SHADER, buildFragmentShader())
+    if (!nextProgram) return false
 
-  let config: DitherConfig = resolveConfig(input)
-  let paletteBuffer = paletteToFloat32(config.palette, config.bandCount)
+    program = nextProgram
+    vao = gl.createVertexArray()
+
+    locations.clear()
+    for (const name of UNIFORM_NAMES) {
+      locations.set(name, gl.getUniformLocation(nextProgram, name))
+    }
+    return true
+  }
+
+  if (!buildGlResources()) return null
 
   let frame = 0
   let running = false
   let destroyed = false
   let contextLost = false
+  let wasRunningBeforeLoss = false
 
   let time = 0
   let lastTimestamp: number | null = null
@@ -129,10 +159,8 @@ export function createRenderer(
   let width = 1
   let height = 1
 
-  // Arrow functions, not function declarations: TypeScript does not carry the
-  // `gl` null-narrowing from the early return above into hoisted function
-  // declarations, only into closures defined after the narrowing point.
   const pushStaticUniforms = () => {
+    if (!program) return
     gl.useProgram(program)
     gl.uniform3fv(at('uPalette'), paletteBuffer)
     gl.uniform1i(at('uBandCount'), config.bandCount)
@@ -148,7 +176,7 @@ export function createRenderer(
   }
 
   const draw = () => {
-    if (destroyed || contextLost) return
+    if (destroyed || contextLost || !program || !vao) return
 
     gl.useProgram(program)
     gl.bindVertexArray(vao)
@@ -165,6 +193,11 @@ export function createRenderer(
 
     const deltaSeconds = lastTimestamp === null ? 0 : Math.min((timestamp - lastTimestamp) / 1000, 0.1)
     lastTimestamp = timestamp
+    // `time` accumulates for the lifetime of the page with no wraparound. At
+    // the default speed it takes roughly five days to reach a magnitude
+    // where float precision visibly degrades. A modulo "fix" would be worse:
+    // the underlying simplex field is not periodic in z, so wrapping it
+    // produces a visible pop rather than a seamless loop.
     time += deltaSeconds * config.speed
 
     pointer.x = easeToward(pointer.x, pointer.targetX, config.pointerEase)
@@ -176,21 +209,28 @@ export function createRenderer(
 
   function handleContextLost(event: Event) {
     event.preventDefault()
+    wasRunningBeforeLoss = running
     contextLost = true
     running = false
     cancelAnimationFrame(frame)
   }
 
-  function handleContextRestored() {
+  const handleContextRestored = () => {
+    if (destroyed) return
     contextLost = false
+    if (!buildGlResources()) return
+    gl.viewport(0, 0, width, height)
     pushStaticUniforms()
-    if (!destroyed) renderer.start()
+    if (wasRunningBeforeLoss) {
+      renderer.start()
+    } else {
+      draw()
+    }
   }
 
   canvas.addEventListener('webglcontextlost', handleContextLost)
   canvas.addEventListener('webglcontextrestored', handleContextRestored)
 
-  gl.clearColor(0, 0, 0, 1)
   pushStaticUniforms()
 
   const renderer: DitherRenderer = {
@@ -199,6 +239,7 @@ export function createRenderer(
     },
 
     setConfig(next: DitherConfigInput) {
+      if (destroyed) return
       // resolveConfig validates first, so an invalid palette throws without
       // leaving GL state half-updated.
       const resolved = resolveConfig({ ...config, ...next })
@@ -227,6 +268,11 @@ export function createRenderer(
       canvas.width = size.width
       canvas.height = size.height
       gl.viewport(0, 0, size.width, size.height)
+
+      // Re-assigning width/height reallocates and clears the drawing buffer.
+      // The RAF loop repaints on its own; a stopped renderer would otherwise
+      // stay blank until whatever external event resumes it.
+      if (!running) draw()
     },
 
     setPointerTarget(x: number, y: number) {
@@ -243,8 +289,8 @@ export function createRenderer(
       destroyed = true
       canvas.removeEventListener('webglcontextlost', handleContextLost)
       canvas.removeEventListener('webglcontextrestored', handleContextRestored)
-      gl.deleteVertexArray(vao)
-      gl.deleteProgram(program)
+      if (vao) gl.deleteVertexArray(vao)
+      if (program) gl.deleteProgram(program)
     },
   }
 
