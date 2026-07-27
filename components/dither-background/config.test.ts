@@ -118,8 +118,25 @@ describe('paletteToFloat32', () => {
     expect(Array.from(out.slice(0, 6))).toEqual([1, 1, 1, 0, 0, 0])
   })
 
-  test('pads unused slots with the last ACTIVE stop, not the last in the array', () => {
-    const out = paletteToFloat32(['#FFFFFF', '#000000', '#FF0000'], 2)
-    expect(Array.from(out.slice(6, 9))).toEqual([0, 0, 0]) // black, not red
+  test('resamples across the full palette instead of truncating the dark end', () => {
+    const out = paletteToFloat32(['#FFFFFF', '#CCCCCC', '#444444', '#000000'], 2)
+    // Endpoints pinned: white and black, not white and light-grey.
+    expect(Array.from(out.slice(0, 3))).toEqual([1, 1, 1])
+    expect(Array.from(out.slice(3, 6))).toEqual([0, 0, 0])
+  })
+
+  test('pads unused slots with the last active stop', () => {
+    const out = paletteToFloat32(['#FFFFFF', '#CCCCCC', '#444444', '#000000'], 2)
+    expect(Array.from(out.slice(6, 9))).toEqual([0, 0, 0])
+  })
+
+  test('is the identity mapping when bandCount equals palette length', () => {
+    const out = paletteToFloat32(['#FFFFFF', '#000000'], 2)
+    expect(Array.from(out.slice(0, 6))).toEqual([1, 1, 1, 0, 0, 0])
+  })
+
+  test('never returns all zeros for a non-finite bandCount', () => {
+    const out = paletteToFloat32(['#FFFFFF', '#000000'], Number.NaN)
+    expect(Array.from(out.slice(0, 3))).toEqual([1, 1, 1])
   })
 })

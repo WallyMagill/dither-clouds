@@ -106,11 +106,18 @@ export function resolveConfig(input: DitherConfigInput = {}): DitherConfig {
 
 export function paletteToFloat32(palette: string[], bandCount: number): Float32Array {
   const out = new Float32Array(MAX_PALETTE_STOPS * 3)
-  const active = Math.min(bandCount, palette.length)
-  let last: [number, number, number] = [0, 0, 0]
+  const active = Math.max(1, Math.min(Math.trunc(bandCount) || 0, palette.length))
 
+  // Palettes run light to dark, so taking the first N stops would drop the dark
+  // end and wash the image out. Resample across the whole ramp instead, pinning
+  // both endpoints — a lower band count should coarsen the ramp, not truncate it.
+  let last: [number, number, number] = [0, 0, 0]
   for (let i = 0; i < MAX_PALETTE_STOPS; i++) {
-    if (i < active) last = hexToVec3(palette[i])
+    if (i < active) {
+      const source =
+        active === 1 ? 0 : Math.round((i * (palette.length - 1)) / (active - 1))
+      last = hexToVec3(palette[source])
+    }
     out[i * 3] = last[0]
     out[i * 3 + 1] = last[1]
     out[i * 3 + 2] = last[2]
