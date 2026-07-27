@@ -49,7 +49,8 @@ describe('resolveConfig', () => {
 
   test('clamps bandCount into 2..palette length', () => {
     expect(resolveConfig({ bandCount: 0 }).bandCount).toBe(2)
-    expect(resolveConfig({ bandCount: 99 }).bandCount).toBe(4)
+    // The default palette has 5 stops, so 5 — not MAX_PALETTE_STOPS — is the ceiling.
+    expect(resolveConfig({ bandCount: 99 }).bandCount).toBe(5)
   })
 
   test('clamps bandCount to MAX_PALETTE_STOPS even on a longer palette', () => {
@@ -71,7 +72,7 @@ describe('resolveConfig', () => {
     const c = resolveConfig()
     expect(c.palette).not.toBe(DEFAULT_CONFIG.palette)
     c.palette[0] = '#FF0000'
-    expect(DEFAULT_CONFIG.palette[0]).toBe('#C4C3B8')
+    expect(DEFAULT_CONFIG.palette[0]).toBe('#DEDACA')
   })
 
   test('orders an inverted contrast window instead of accepting it', () => {
@@ -97,18 +98,32 @@ describe('resolveConfig', () => {
   })
 
   test('defaults match the spec measurements', () => {
-    expect(DEFAULT_CONFIG.bandCount).toBe(4)
+    expect(DEFAULT_CONFIG.bandCount).toBe(5)
     // 8 DEVICE px, which is 4 CSS px at the dpr-2 cap. The reference measured a
-    // 3-4px pitch on an 811px-wide image (~0.37% of width); 4 CSS px on a
-    // 1200px viewport is ~0.33%. The apparent discrepancy with the spec's "4"
-    // is only device-vs-CSS pixels — the rendered pitch matches the measurement.
+    // 3-4px pitch on an 821px-wide image (~0.37% of width); 4 CSS px on a
+    // 1200px viewport is ~0.33% — the rendered pitch matches the measurement,
+    // the numbers differ only because this config is in device pixels.
     expect(DEFAULT_CONFIG.cellSize).toBe(8)
-    expect(DEFAULT_CONFIG.palette.slice(0, 4)).toEqual([
-      '#C4C3B8',
-      '#B8B7AE',
-      '#1A2121',
-      '#03000A',
+    // Both endpoints are measured from docs/reference-clouds.png: warm paper
+    // (R-B = +13) and a navy — not black — void (R-B = -7). The midtones
+    // between them are a design choice; see the note in palettes.ts.
+    expect(DEFAULT_CONFIG.palette).toEqual([
+      '#DEDACA',
+      '#B4B0A7',
+      '#6E7A76',
+      '#31454A',
+      '#16181D',
     ])
+  })
+
+  test('the default palette runs warm at the light end and cool at the dark end', () => {
+    // The hue shift along the ramp is what keeps this from reading as a
+    // greyscale gradient — it is the property that made the previous
+    // near-black-on-near-black palette look monochrome.
+    const [lr, , lb] = hexToVec3(DEFAULT_CONFIG.palette[0])
+    const [dr, , db] = hexToVec3(DEFAULT_CONFIG.palette[DEFAULT_CONFIG.palette.length - 1])
+    expect(lr).toBeGreaterThan(lb) // warm: red above blue
+    expect(dr).toBeLessThan(db) // cool: blue above red
   })
 })
 

@@ -39,8 +39,26 @@ describe('palettes', () => {
     }
   })
 
-  test('editorial palette is the measured reference palette', () => {
-    expect(PALETTES.editorial).toEqual(['#C4C3B8', '#B8B7AE', '#1A2121', '#03000A'])
+  test('editorial palette pins the two measured endpoints', () => {
+    // Measured from docs/reference-clouds.png. The midtones between them are a
+    // design choice — that reference is a duotone whose apparent greys are
+    // compression artifacts, not real stops.
+    expect(PALETTES.editorial[0]).toBe('#DEDACA')
+    expect(PALETTES.editorial[1]).toBe('#B4B0A7')
+    expect(PALETTES.editorial[PALETTES.editorial.length - 1]).toBe('#16181D')
+  })
+
+  test('every palette shifts cooler from its light end to its dark end', () => {
+    // A neutral luma ramp reads as greyscale no matter how it is dithered, so
+    // every palette must carry a hue shift. The invariant is the *shift*, not
+    // absolute warmth — `slate` is deliberately cool throughout, so asserting
+    // its light stop is warm would be asserting the wrong thing.
+    for (const name of PALETTE_NAMES) {
+      const stops = PALETTES[name]
+      const [lr, , lb] = hexToVec3(stops[0])
+      const [dr, , db] = hexToVec3(stops[stops.length - 1])
+      expect(lr - lb, `${name} should shift cooler toward its dark end`).toBeGreaterThan(dr - db)
+    }
   })
 
   test('PALETTE_NAMES covers every key in PALETTES', () => {

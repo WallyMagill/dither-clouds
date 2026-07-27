@@ -56,17 +56,44 @@ grid is fine and dense, not chunky.
 same rendered pitch. The number differs from the measurement above only because
 the config is expressed in device pixels; see the note in `config.test.ts`.
 
+### Second reference, and the palette revision
+
+`docs/reference-clouds.png` was supplied after the first implementation, with
+the note that the result read "too monochrome, too busy … like camouflage."
+That critique was correct and its cause was in this document: the four-stop
+palette above ends in two near-identical near-blacks (`#1A2121`, `#03000A`)
+with no real midtone between cream and dark, so the halftone had almost no
+tonal information to carry and the whole field collapsed toward greyscale.
+
+The same per-region histogram method applied to the second reference gives:
+
+| Region | Measured | Character |
+|---|---|---|
+| Paper / pale masses | `#B4B0A7` | R−B = +13 → warm |
+| Deep void (upper right) | `#16181D` | R−B = −7 → **navy**, not black |
+| Centre midtone | `#6D6B66` | R−B = +7 → warm gray |
+
+Its exact-color histogram is otherwise dominated by pure `#000000` (30%) and
+`#B4B0A7` (33%) with perfectly neutral, evenly-spaced greys between them —
+those greys are compression artifacts between two inks, not palette stops. So
+the second reference is literally a **duotone**, and the five tones in the
+revised palette are a design decision, not a measurement.
+
 ### Palette (default)
 
 ```
-stop 0  #C4C3B8   light cream       (lifted from B8B7AE for highlight headroom)
-stop 1  #B8B7AE   warm olive cream  (dominant light, measured)
-stop 2  #1A2121   dark teal         (measured)
-stop 3  #03000A   near-black navy   (measured)
+stop 0  #DEDACA   warm cream               (design; light headroom above the measured paper)
+stop 1  #B4B0A7   muted olive-gray         (MEASURED — the reference's paper)
+stop 2  #6E7A76   desaturated blue-green   (design; carries hue across the midtones)
+stop 3  #31454A   deep teal                (design)
+stop 4  #16181D   near-black navy          (MEASURED — the reference's void)
 ```
 
-`#B2B67F` is retained in `palettes.ts` as an optional accent variant, not a
-default stop.
+Both endpoints are measured; the midtones are chosen. Interpolating a neutral
+ramp between the measured endpoints would land back on the reference's
+compression greys and read monochrome — the exact failure being corrected. The
+invariant that matters is enforced by a test: every palette must shift cooler
+from its light end to its dark end.
 
 ## Architecture
 

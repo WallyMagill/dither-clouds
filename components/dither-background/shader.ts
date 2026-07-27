@@ -30,7 +30,11 @@ void main() {
 }
 `
 
-export function buildFragmentShader(octaves = 4): string {
+// 3 octaves, not 4. The top octave of a 4-octave fbm adds fine detail across the
+// whole field, which at this scale reads as camouflage speckle competing with the
+// halftone rather than as cloud structure. Three keeps the forms broad and soft
+// while still giving the boundaries irregular, slowly-curving edges.
+export function buildFragmentShader(octaves = 3): string {
   if (!Number.isInteger(octaves) || octaves < 1 || octaves > 8) {
     throw new Error(`Octave count must be an integer in 1..8, received ${octaves}`)
   }
@@ -67,7 +71,7 @@ const float BAYER[${BAYER_8.length}] = float[${BAYER_8.length}](${bayerLiteral})
 // the palette bands never separate. This gain expands the field to span roughly
 // 0..1 before the contrast window shapes it, which is what gives uContrastLow/High
 // meaningful travel instead of crowding all the useful range into a few slider steps.
-const float FIELD_GAIN = 1.05;
+const float FIELD_GAIN = 3.0;
 
 // How far the tonal range is inset from pure 0 and 1. See the use site in
 // main() — this is what keeps a minimum dot density in the lightest and darkest

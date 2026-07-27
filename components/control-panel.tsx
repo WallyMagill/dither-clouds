@@ -90,17 +90,10 @@ export function ControlPanel({
     }
   }
 
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="fixed bottom-4 right-4 z-50 rounded-full bg-black/60 px-3 py-1.5 font-mono text-xs text-white/70 backdrop-blur transition hover:text-white"
-      >
-        ` controls
-      </button>
-    )
-  }
+  // Closed means invisible, not a small affordance. The page is meant to read as
+  // the finished artwork with no chrome whatsoever; the backtick key is the only
+  // way in, which is documented in the README.
+  if (!open) return null
 
   return (
     <aside className="fixed bottom-4 right-4 z-50 max-h-[85vh] w-72 overflow-y-auto rounded-lg bg-black/75 p-4 font-mono text-xs text-white/90 backdrop-blur">

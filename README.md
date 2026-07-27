@@ -54,27 +54,37 @@ See `components/dither-background/config.ts` for the full JSDoc.
 
 | Field | Default | What it does |
 |---|---|---|
-| `palette` | `['#C4C3B8', '#B8B7AE', '#1A2121', '#03000A']` | Palette stops, light to dark. At least 2 required. |
-| `bandCount` | `4` | Number of active palette stops. Clamped to `2..min(MAX_PALETTE_STOPS, palette.length)`. |
+| `palette` | `['#DEDACA', '#B4B0A7', '#6E7A76', '#31454A', '#16181D']` | Palette stops, light to dark. At least 2 required. |
+| `bandCount` | `5` | Number of active palette stops. Clamped to `2..min(MAX_PALETTE_STOPS, palette.length)`. |
 | `cellSize` | `8` | Halftone cell edge length, in **device** pixels. |
 | `ditherStrength` | `1` | How far the Bayer threshold deviates from 0.5. `0` = hard posterize with no dot texture. |
-| `noiseScale` | `1.5` | Base frequency of the noise field. |
-| `warpStrength` | `0.85` | Strength of the first domain-warp level. |
-| `warpDetail` | `0.9` | Strength of the second domain-warp level. |
+| `noiseScale` | `1.2` | Base frequency of the noise field. Past ~2 the forms get small enough to read as camouflage rather than clouds. |
+| `warpStrength` | `0.75` | Strength of the first domain-warp level. Past ~1.5 the forms shear into marbling. |
+| `warpDetail` | `0.45` | Strength of the second domain-warp level. |
 | `speed` | `0.08` | Animation rate along the noise z axis. |
 | `pointerStrength` | `0.6` | How far the pointer bends the fold pattern. `0` disables pointer input. |
 | `pointerEase` | `0.04` | Easing factor applied to pointer motion per frame, `(0..1]`. Floored at `0.001` — exactly `0` would freeze the pointer permanently. |
-| `contrastLow` | `0.29` | Lower edge of the contrast remap window. |
-| `contrastHigh` | `0.71` | Upper edge of the contrast remap window. |
+| `contrastLow` | `0.38` | Lower edge of the contrast remap window. |
+| `contrastHigh` | `0.66` | Upper edge of the contrast remap window. |
 | `grain` | `0.02` | Amplitude of the per-cell grain pass. |
 
 `bandCount` below `palette.length` resamples the ramp rather than truncating
 it — both endpoints are always pinned, so a lower band count coarsens the
 gradient instead of dropping its dark end.
 
-The default palette values were measured from `docs/reference.png` (an exact-
-color histogram per region, not an eyeballed guess — see the design spec in
-`docs/superpowers/specs/`).
+The contrast window is deliberately asymmetric about 0.5. Centring it spreads
+every tone evenly across the canvas, which reads as static; biasing it leaves
+broad pale areas as the default state and concentrates the darks into a few
+voids, which is what gives the composition hierarchy and open space.
+
+The palette's two endpoints are measured from `docs/reference-clouds.png` via a
+per-region exact-color histogram: the paper reads `#B4B0A7` (warm, R−B = +13)
+and the deep void reads `#16181D` (navy, R−B = −7 — not black). The midtones
+between them are a design choice rather than a measurement; that reference is
+literally a duotone, and its apparent greys are neutral compression artifacts
+between two inks. Interpolating a neutral ramp between the endpoints lands back
+on those greys and reads monochrome, so the midtones step through olive-gray and
+desaturated blue-green to carry hue across the middle of the range.
 
 ## Using the engine without React
 
