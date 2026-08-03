@@ -1,0 +1,52 @@
+{
+  "name": "dither-clouds",
+  "version": "1.0.0",
+  "description": "Animated five-ink dithered cloudscapes in WebGL2 and React.",
+  "private": true,
+  "license": "MIT",
+  "author": "Wally Magill",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/WallyMagill/dither-clouds.git"
+  },
+  "homepage": "https://github.com/WallyMagill/dither-clouds#readme",
+  "bugs": {
+    "url": "https://github.com/WallyMagill/dither-clouds/issues"
+  },
+  "keywords": [
+    "webgl",
+    "shader",
+    "dithering",
+    "react",
+    "nextjs",
+    "generative-art"
+  ],
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "next": "16.2.12",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "overrides": {
+    "postcss": "8.5.25",
+    "sharp": "0.35.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.12",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vitest": "^4.1.10"
+  }
+}

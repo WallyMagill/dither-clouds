@@ -1,0 +1,30 @@
+name: Bug report
+description: Report a rendering, behavior, or compatibility problem
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the expected and actual behavior.
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device
+      placeholder: Safari 20 on macOS, Chrome 140 on Windows, etc.
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration or reproduction
+      description: Paste a minimal config or link to a reproduction.
+      render: json
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Screenshots, console output, and WebGL details are useful.
